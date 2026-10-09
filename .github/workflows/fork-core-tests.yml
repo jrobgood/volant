@@ -1,0 +1,14 @@
+# Fork only: runs the VolantCore package tests, which the PR checks do not run.
+name: Core tests (fork)
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  core:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path Core 2>&1 | tail -200
+        shell: bash -o pipefail {0}
