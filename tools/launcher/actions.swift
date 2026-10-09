@@ -312,7 +312,7 @@ clickPoint()
 verify(!panel.model.showingACP && panel.model.acp.active && !panel.model.acp.draft.isEmpty, "Back returns to search without ending chat or discarding its draft")
 try render("chat-back")
 panel.orderOut(nil)
-let settings = SettingsWindowController(configURL: panel.model.actionConfigURL, acp: panel.model.acp) {}
+let settings = SettingsWindowController(configURL: panel.model.actionConfigURL, conversations: panel.model.conversations) {}
 try chatConfig!.save(at: panel.model.actionConfigURL)
 settings.state.section = "AI"
 settings.window!.setContentSize(NSSize(width: 680, height: 500))
@@ -591,8 +591,9 @@ func renderAPISettings(_ kind: AIConnectionKind, provider: AIAPIProvider = .open
         if candidate.endpoint.contains("11434") && !offline { completion(["fictional-local-model", "fictional-second-model"], nil) }
         else { completion(nil, "Server unavailable. Start it or enter a custom URL.") }
     }
-    let model = ACPModel()
-    let view = NSHostingView(rootView: AISettingsView(model: model, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in }, credentials: fakeCredentials, discovery: discovery)
+    let conversations = ACPConversations()
+    let model = conversations.current
+    let view = NSHostingView(rootView: AISettingsView(conversations: conversations, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in }, credentials: fakeCredentials, discovery: discovery)
         .background(Color(nsColor: .windowBackgroundColor)))
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 660), styleMask: [.titled], backing: .buffered, defer: false)
     window.contentView = view; window.makeKeyAndOrderFront(nil); settle()
@@ -633,8 +634,9 @@ do {
             ACPAgentAvailability(provider: "gemini", state: .notInstalled, detail: "Gemini CLI was not found. Install it and sign in, then retry.", path: nil)
         ]), nil)
     }
-    let model = ACPModel()
-    let view = NSHostingView(rootView: AISettingsView(model: model, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in },
+    let conversations = ACPConversations()
+    let model = conversations.current
+    let view = NSHostingView(rootView: AISettingsView(conversations: conversations, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in },
                                                       credentials: fakeCredentials, discovery: AIModelDiscovery(), agentDetection: detection)
         .background(Color(nsColor: .windowBackgroundColor)))
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
@@ -686,6 +688,54 @@ try render("ai-acp-resume", view: resumeChat)
 resumeChatWindow.orderOut(nil)
 UserDefaults().removePersistentDomain(forName: resumeSuite)
 print("PASS: a recorded ACP conversation offers Resume and New without connecting")
+// Several conversations in one list. Starting one only marks it ready, so no helper connection opens.
+let severalSuite = "volant.actions.fixture.acp-several"
+UserDefaults().removePersistentDomain(forName: severalSuite)
+let several = ACPConversations(make: { ACPModel(resumeStore: UserDefaults(suiteName: severalSuite)!) },
+                               start: { model in model.state.phase = "ready"; model.state.status = "Ready" })
+var severalConfig = AIConfiguration(); severalConfig.provider = "claude"; severalConfig.project = "/fictional/orbit-web"
+verify(several.newConversation(configuration: severalConfig), "An unused conversation starts in place")
+let severalAwaiting = several.current
+severalAwaiting.state.phase = "working"; severalAwaiting.state.status = "Needs your permission"
+severalAwaiting.state.permissions = [ACPPermission(id: "fictional-permission", title: "Read fictional notes", detail: "{}",
+                                                   options: [ACPPermission.Option(optionId: "once", name: "Allow once", kind: "allow_once")])]
+severalConfig.provider = "codex"
+verify(several.newConversation(configuration: severalConfig) && several.live.count == 2 && severalAwaiting.active, "New keeps the first conversation running")
+several.current.state.messages = [ACPMessage(role: "You", text: "Summarize the fictional release notes."),
+                                  ACPMessage(role: "Agent", text: "The fictional release adds **two** settings.")]
+verify(several.nextToOpen === severalAwaiting && severalAwaiting.background && !several.current.background,
+       "The launcher opens the conversation awaiting permission first, and only the shown one polls at the foreground interval")
+let severalChat = NSHostingView(rootView: ACPConversationView(model: several.current, conversations: several)
+    .background(Color(nsColor: .windowBackgroundColor)))
+let severalChatWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
+severalChatWindow.contentView = severalChat; severalChatWindow.makeKeyAndOrderFront(nil); settle()
+try render("ai-acp-several", view: severalChat)
+severalChatWindow.orderOut(nil)
+let severalStrip = NSHostingView(rootView: VStack(spacing: 0) {
+    ACPActivityStrip(conversations: several) { _ in }
+    Spacer(minLength: 0)
+}.background(Color(nsColor: .windowBackgroundColor)))
+let severalStripWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
+severalStripWindow.contentView = severalStrip; severalStripWindow.makeKeyAndOrderFront(nil); settle()
+try render("ai-acp-several-strip", view: severalStrip)
+severalStripWindow.orderOut(nil)
+// AI Settings counts the running conversations. Detection reads a fictional result, never the helper.
+try severalConfig.save(at: aiFixtureURL)
+let severalDetection = ACPAgentDetection()
+severalDetection.reader = { reply in
+    reply(try? JSONEncoder().encode([ACPAgentAvailability(provider: "codex", state: .ready, detail: "Found at /opt/homebrew/bin/codex", path: "/opt/homebrew/bin/codex")]), nil)
+}
+let severalSettings = NSHostingView(rootView: AISettingsView(conversations: several, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in },
+                                                             credentials: fakeCredentials, discovery: AIModelDiscovery(), agentDetection: severalDetection)
+    .background(Color(nsColor: .windowBackgroundColor)))
+let severalSettingsWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 760), styleMask: [.titled], backing: .buffered, defer: false)
+severalSettingsWindow.contentView = severalSettings; severalSettingsWindow.makeKeyAndOrderFront(nil); settle()
+verify(several.live.count == 2 && several.current.active, "AI Settings is drawn with two running conversations")
+try render("ai-acp-several-settings", view: severalSettings)
+severalSettingsWindow.orderOut(nil)
+for model in several.all { model.state.phase = "disconnected" }
+UserDefaults().removePersistentDomain(forName: severalSuite)
+print("PASS: several ACP conversations render their buttons and one launcher row without a helper connection")
 
 // Clipboard failures never access the owner's Keychain or pasteboard.
 clipboard.record("Fictional clipboard recovery fixture")

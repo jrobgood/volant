@@ -21,7 +21,7 @@ final class SettingsWindowController: NSWindowController {
 
     /// `dictationAccess` defaults to a real helper connection, which connects only when typing is
     /// chosen; fixtures pass one with a fake client.
-    init(configURL: URL = Preferences.configURL, acp: ACPModel = ACPModel(),
+    init(configURL: URL = Preferences.configURL, conversations: ACPConversations = ACPConversations(),
          dictationAccess: DictationTypingAccess = DictationTypingAccess(client: InputHostConnection()),
          openAI: @escaping (AIConfiguration) -> Void = { _ in }, onChange: @escaping () -> Void) {
         self.onChange = onChange
@@ -37,7 +37,7 @@ final class SettingsWindowController: NSWindowController {
         window.setFrameAutosaveName("VolantSettings")
         super.init(window: window)
         let hosting = NSHostingView(rootView: ThemedRoot(paletteText: false) {
-            SettingsView(state: state, acp: acp, dictationAccess: dictationAccess, configURL: configURL, onChange: onChange, openAI: openAI,
+            SettingsView(state: state, conversations: conversations, dictationAccess: dictationAccess, configURL: configURL, onChange: onChange, openAI: openAI,
                          chooseAIProject: { [weak self] completion in self?.chooseAIProject(completion) },
                          importRaycast: { [weak self] in self?.showRaycastImport() })
                 .frame(minWidth: 680, idealWidth: 760, maxWidth: .infinity, minHeight: 500, idealHeight: 540, maxHeight: .infinity)
@@ -76,7 +76,7 @@ final class SettingsWindowController: NSWindowController {
 
 private struct SettingsView: View {
     @ObservedObject var state: SettingsState
-    @ObservedObject var acp: ACPModel
+    @ObservedObject var conversations: ACPConversations
     let dictationAccess: DictationTypingAccess
     let configURL: URL
     let onChange: () -> Void
@@ -104,7 +104,7 @@ private struct SettingsView: View {
                 if state.section == "General" { general }
                 else if state.section == "Appearance" { AppearanceSettingsView(appearance: state.config.appearance, configURL: configURL, onChange: onChange) }
                 else if state.section == "Status Bar" { statusBar }
-                else if state.section == "AI" { AISettingsView(model: acp, configURL: configURL, onChange: onChange, openConversation: openAI, chooseProject: chooseAIProject) }
+                else if state.section == "AI" { AISettingsView(conversations: conversations, configURL: configURL, onChange: onChange, openConversation: openAI, chooseProject: chooseAIProject) }
                 else if state.section == "Extensions" { ExtensionSettingsView(configURL: configURL, onChange: onChange) }
                 else if state.section == "App Shortcuts" { shortcuts }
                 else { data }
