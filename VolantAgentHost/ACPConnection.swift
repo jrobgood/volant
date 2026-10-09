@@ -26,12 +26,24 @@ final class ACPConnection {
     private var replayTrimmed = false
     static let replayTextLimit = 400_000
     static let replayEventLimit = 800
+    /// Shared by every connection in this helper process, so the limit counts conversations across
+    /// all of the app's connections.
+    private let slots: ACPConversationSlots
+    private var holdsSlot = false
     // Fixture injection is only available to Swift tests, never over XPC.
     var testSend: (([String: Any]) -> Void)?
+
+    init(slots: ACPConversationSlots = .shared) {
+        self.slots = slots
+    }
 
     func start(provider: String, project: String, resume: String? = nil) throws {
         guard task == nil, state.phase == "disconnected" else { throw failure("End this conversation before starting another.") }
         if let resume, !ACPResumeRecord.isValidSessionID(resume) { throw failure("This conversation can’t be resumed. Start a new conversation.") }
+        try takeSlot()
+        // Every exit below that launches no agent returns the slot.
+        var launched = false
+        defer { if !launched { releaseSlot() } }
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         guard let selected = ACPProvider(rawValue: provider) else { throw failure("Unknown ACP provider.") }
         let launch: ACPLaunch
@@ -58,6 +70,7 @@ final class ACPConnection {
             }
         }
         try process.run()
+        launched = true
         task = process; input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading
         output?.readabilityHandler = { [weak self] handle in
             let data = handle.availableData
@@ -72,6 +85,20 @@ final class ACPConnection {
             guard let self, self.epoch == generation, self.state.phase == "starting" else { return }
             self.stop("Agent startup timed out. Check its terminal login and reconnect.", failed: true)
         }
+    }
+    /// Takes one of the helper's conversation slots before anything is resolved or launched. Internal
+    /// so `tools/acp/check.swift` can hold a slot without an installed agent; never exposed over XPC.
+    func takeSlot() throws {
+        guard !holdsSlot else { return }
+        guard slots.acquire() else {
+            throw failure("Volant runs up to \(slots.limit) conversations at once. End one to start another.")
+        }
+        holdsSlot = true
+    }
+    private func releaseSlot() {
+        guard holdsSlot else { return }
+        holdsSlot = false
+        slots.release()
     }
     func beginHandshake(project: String, resume: String? = nil) {
         self.project = project
@@ -127,6 +154,9 @@ final class ACPConnection {
         try? input?.close(); input = nil
         try? output?.close(); output = nil
         task = nil; pending = [:]; buffer = Data(); resumeID = nil
+        // Stop runs on process exit, every failure, acpStop and XPC invalidation, so the slot
+        // returns on each of those paths.
+        releaseSlot()
         state.phase = failed ? "failed" : "disconnected"; state.status = message; state.sessionID = nil
     }
     private func cancelPermissions() {

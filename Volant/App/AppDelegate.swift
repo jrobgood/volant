@@ -5,7 +5,7 @@ import VolantCore
 
 /// Owns the long-lived services: menu bar item, hotkeys, app index, clipboard monitor, and the panel.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(acp: panel.model.acp, openAI: { [weak self] configuration in
+    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(conversations: panel.model.conversations, openAI: { [weak self] configuration in
         guard let self else { return }
         self.settingsPanel.window?.orderOut(nil)
         self.panel.model.acp.configure(configuration)

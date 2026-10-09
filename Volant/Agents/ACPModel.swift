@@ -19,8 +19,13 @@ final class ACPModel: ObservableObject {
 
     init(resumeStore: UserDefaults = .standard) {
         self.resumeStore = resumeStore
-        if let data = resumeStore.data(forKey: Self.resumeKey),
-           let record = try? JSONDecoder().decode(ACPResumeRecord.self, from: data), record.isValid { resumable = record }
+        resumable = Self.record(in: resumeStore)
+    }
+    /// The stored record, read again each time: another conversation may have replaced it.
+    private static func record(in store: UserDefaults) -> ACPResumeRecord? {
+        guard let data = store.data(forKey: resumeKey),
+              let record = try? JSONDecoder().decode(ACPResumeRecord.self, from: data), record.isValid else { return nil }
+        return record
     }
     private var configuration = AIConfiguration()
     var credentials = AICredentials.keychain
@@ -60,18 +65,35 @@ final class ACPModel: ObservableObject {
     private var generation = UUID()
     private var reading = false
     private var revision = 0
+    /// Set on every conversation except the one AI Chat shows. Each poll decodes the whole transcript
+    /// on the main thread, and six conversations polling every 0.25 s would decode up to 24
+    /// transcripts a second, so a conversation in the background polls once a second.
+    var background = false {
+        didSet { if background != oldValue, timer != nil { schedulePolling() } }
+    }
+    /// The recorded session ID this conversation asked the agent to load. Several conversations
+    /// share one record, so a refused load clears it only while it still names this session.
+    var resumedSession: String?
+    /// Native session IDs that the launcher's other live conversations hold. Resume never loads one
+    /// of them, so one session never runs in two agent processes.
+    var sessionsElsewhere: () -> [String] = { [] }
     var active: Bool { !["failed", "disconnected"].contains(state.phase) }
     /// Resume is offered only for the provider and project currently chosen, so it can never
     /// reopen a conversation in a folder the owner has since moved away from.
     var canResume: Bool {
-        !active && !usesAPI && !usesApple && resumable?.matches(provider: provider, project: project) == true
+        guard !active, !usesAPI, !usesApple, let record = resumable, record.matches(provider: provider, project: project) else { return false }
+        return !sessionsElsewhere().contains(record.sessionID)
     }
     var canSend: Bool { state.phase == "ready" && !submitting && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
-    func start() { connect(resume: nil) }
+    func start() {
+        resumedSession = nil
+        connect(resume: nil)
+    }
 
     func resume() {
         guard canResume, let record = resumable else { return }
+        resumedSession = record.sessionID
         connect(resume: record.sessionID)
     }
 
@@ -91,7 +113,7 @@ final class ACPModel: ObservableObject {
                 guard let self, self.generation == current else { return }
                 if let error { self.failed(error, current: current); return }
                 self.read()
-                self.timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.read() }
+                self.schedulePolling()
             }
         }
         if let session { proxy()?.acpResume(provider: provider, project: project, session: session, reply: started) }
@@ -100,10 +122,13 @@ final class ACPModel: ObservableObject {
     /// Records a conversation once it is ready and holds an owner turn, so a session opened and left
     /// unused never replaces the record. A launch failure keeps the record, since the cause may be an
     /// expired provider login with the conversation still intact; an agent that refuses to load it
-    /// clears it.
+    /// clears it, unless another conversation has recorded its own since.
     func remember(_ snapshot: ACPState) {
         if snapshot.resumeRejected == true {
-            resumeStore.removeObject(forKey: Self.resumeKey); resumable = nil; return
+            if let rejected = resumedSession, Self.record(in: resumeStore)?.sessionID == rejected {
+                resumeStore.removeObject(forKey: Self.resumeKey)
+            }
+            resumable = nil; return
         }
         guard !usesAPI, !usesApple, snapshot.phase == "ready", let session = snapshot.sessionID,
               snapshot.messages.contains(where: { $0.role == "You" }) else { return }
@@ -273,9 +298,11 @@ final class ACPModel: ObservableObject {
         })
     }
 
-    private func startAPIPolling() {
+    private func startAPIPolling() { schedulePolling() }
+    /// Replaces the snapshot timer with one at this conversation's interval.
+    private func schedulePolling() {
         timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in self?.read() }
+        timer = Timer.scheduledTimer(withTimeInterval: background ? 1 : 0.25, repeats: true) { [weak self] _ in self?.read() }
     }
     private func apiProxy() -> VolantAIHostProtocol? {
         let current = generation

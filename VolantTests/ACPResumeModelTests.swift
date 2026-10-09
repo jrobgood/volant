@@ -91,6 +91,7 @@ final class ACPResumeModelTests: XCTestCase {
     func testARejectedResumeClearsTheRecord() throws {
         try save(ACPResumeRecord(provider: "claude", project: "", sessionID: "fictional-session"))
         let model = ACPModel(resumeStore: store)
+        model.resumedSession = "fictional-session"
         var rejected = ACPState(phase: "failed"); rejected.resumeRejected = true
         model.remember(rejected)
         XCTAssertNil(model.resumable)

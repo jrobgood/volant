@@ -199,3 +199,60 @@ replacing the record, saving only after an owner turn, and clearing a rejected r
 an isolated defaults suite; other ACP model tests use the same isolated suite. Not verified: the signed installed app
 resuming a real Claude Code, Codex or OpenCode conversation, and the Resume and New buttons in
 native light and dark renders.
+
+## Several conversations — October 9, 2026
+
+Volant ran one ACP conversation at a time. Starting another meant ending the running one, so a
+second question cost the first agent its place. The helper already builds one `AgentHost`, and so
+one `ACPConnection`, for each XPC connection, and each `ACPModel` opens its own connection, so
+several models are several independent conversations with no protocol change.
+
+**List.** `ACPConversations` holds the launcher's conversations in the order they started; one is
+current and shown in AI Chat. While a conversation runs, the header shows New beside End. New
+starts a conversation with the provider and folder saved in Settings and shows it, and the one
+that was shown keeps running in its own helper connection. A current conversation that never
+started and holds no transcript is started in place. With more than one conversation to show, a
+row of buttons under the header lists them with the provider, the folder's last path component, a
+raised hand while one waits for a permission and a small spinner while it works; selecting one
+shows it. A conversation that ends while another is shown leaves the row at once, and its
+in-memory transcript is discarded at the next selection or New. The shown conversation keeps its
+transcript after End until the next Start, as before.
+
+**Limit.** Up to 6 conversations run at once (`ACPConversationLimit.live`). The app disables New
+at the limit and refuses a seventh conversation with "Volant runs up to 6 conversations at once.
+End one to start another." The helper counts the same limit in one `ACPConversationSlots` shared
+by every connection in its process. `ACPConnection.start` takes a slot before it resolves the
+provider or launches anything, and returns it if the start ends before an agent runs; `stop`
+returns it on process exit, every failure, `acpStop` and XPC invalidation. Conversations through
+an HTTP API or Apple's model count toward the app's limit and take no helper slot.
+
+**Polling.** Each poll decodes the whole transcript on the main thread. The shown conversation
+still polls every 0.25 s, and the others poll once a second. Six conversations at 0.25 s would
+decode up to 24 transcripts a second; with one shown and five behind it, the most is 9.
+
+**Launcher and Settings.** With one live conversation, the AI Chat row in search looks as it did.
+With several it stays one row: AI Chat, then a badge per live conversation with its provider and a
+raised hand while it waits for a permission. A badge opens its conversation, and Open
+conversation opens the first one waiting for a permission, else the current one. Settings → AI
+reads "N conversations running" when more than one runs, and its button opens the current one.
+
+**Resume.** Every conversation shares the one record under `acp.lastConversation`, so it holds
+the conversation that most recently recorded an owner turn. A refused `session/load` clears the
+record only while it still names the session that conversation asked to load, so a record another
+conversation wrote since survives. Resume is not offered for a session another live conversation
+holds or is loading, so one session never runs in two agent processes.
+
+Evidence: `ACPConversationSlotsTests` in Core (5 tests, including 200 concurrent acquire and
+release pairs that never exceed the limit) and the new `tools/acp/check.swift` check, which
+refuses a start at a limit of 0 before the provider is resolved, returns the slot after an unknown
+provider fails, refuses a second conversation at a limit of 1 and frees the slot on stop. Both ran
+on Linux with Swift 6.1, the helper source compiled against `Glibc` in place of `Darwin`; removing
+the release from `stop` makes the check fail. `ACPConversationsTests` covers New keeping the
+running conversation, reuse of an unused one, refusal of the seventh, dropping ended
+conversations, the background polling flags, the launcher's choice of a waiting conversation, a
+refused resume keeping another conversation's record, and Resume withheld for a held session.
+Those app tests and the new `ai-acp-several` and `ai-acp-several-strip` fixtures in
+`tools/check-launcher-actions.sh` need macOS and did not run for this change; the fixtures run in
+CI when the PR checks select the UI job. Not verified: several live conversations with real
+providers in the signed installed app, and the conversation buttons and launcher row in native
+light and dark renders.

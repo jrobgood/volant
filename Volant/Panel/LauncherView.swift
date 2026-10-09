@@ -28,13 +28,14 @@ struct LauncherView: View {
                 TranslationView(model: model.translation, caffeinate: model.caffeinate, back: { model.query = ""; model.searchFocusRequest = UUID() }, copy: model.copyText)
             } else if model.showingACP {
                 ACPConversationView(model: model.acp, settings: model.openAISettings, back: { model.query = "" }, caffeinate: model.caffeinate, focusRequest: model.searchFocusRequest,
-                                    contextCandidates: model.contextCandidates)
+                                    contextCandidates: model.contextCandidates, conversations: model.conversations,
+                                    newConversation: model.newConversation, select: model.selectConversation)
                     .onAppear { model.openAIChat() }
             } else {
             searchField
             Divider().opacity(0.6)
             if model.config.statusBar.sources.contains("ai-chat") {
-                ACPActivityStrip(model: model.acp) { model.presentAIChat() }
+                ACPActivityStrip(conversations: model.conversations, open: model.selectConversation)
             }
             if model.showingAppleShortcuts {
                 HStack {

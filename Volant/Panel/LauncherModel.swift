@@ -294,7 +294,10 @@ final class LauncherModel: ObservableObject {
     private var shortcutRunQuery: String?
     var showingAppleShortcuts: Bool { AppleShortcut.queryTerm(query) != nil }
     let agents: AgentsModel
-    let acp = ACPModel()
+    let conversations = ACPConversations()
+    /// The conversation AI Chat shows; everything that acts on "the" conversation acts on this one.
+    var acp: ACPModel { conversations.current }
+    private var conversationSubscription: AnyCancellable?
     @Published private(set) var showingACP = false
     @Published var promotedHarness: String?
     var isPresented = false {
@@ -447,6 +450,11 @@ final class LauncherModel: ObservableObject {
         }
         agentSubscription = agents.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.refreshAgentResults() }
+        }
+        // Switching conversations redraws the launcher. Changes inside a conversation reach only the
+        // views that observe it, so a streamed reply never redraws the whole launcher.
+        conversationSubscription = conversations.$current.dropFirst().sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
     }
 
@@ -1189,6 +1197,16 @@ final class LauncherModel: ObservableObject {
         showingACP = true
         sections = []
         searchFocusRequest = UUID()
+    }
+    /// Starts another conversation and shows it; the one that was shown keeps running.
+    func newConversation() {
+        let configuration = try? AIConfiguration.load()
+        if conversations.newConversation(configuration: configuration) { presentAIChat() }
+        else if configuration?.isConfigured != true { openAISettings() }
+    }
+    func selectConversation(_ model: ACPModel) {
+        conversations.select(model)
+        presentAIChat()
     }
     func openAIChat() { onNote(.ai) }
     func openSettings() { dismiss(); onNote(.settings) }
