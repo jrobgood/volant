@@ -3,7 +3,8 @@ import SwiftUI
 import VolantCore
 
 struct AISettingsView: View {
-    @ObservedObject var model: ACPModel
+    /// The launcher's conversations; changes inside the current one reach this view through the list.
+    @ObservedObject var conversations: ACPConversations
     let configURL: URL
     let onChange: () -> Void
     let openConversation: (AIConfiguration) -> Void
@@ -33,21 +34,10 @@ struct AISettingsView: View {
             else if config.connection == .apple { appleControls }
             else { apiControls }
             Section {
-                if model.active {
-                    LabeledContent("Current conversation: \(model.providerTitle)") {
-                        Button("Open Current Conversation") { openConversation(config) }
-                    }
-                } else {
-                    LabeledContent(config.isConfigured ? "Ready" : "Finish the settings above to connect") {
-                        Button(config.connection == .acp ? "Connect ACP" : "Open AI Chat") {
-                            if persist() { openConversation(config) }
-                        }.disabled(!config.isConfigured || !loaded || (config.connection == .apple && !appleAvailability.isReady))
-                            .background(ControlAnchor("settings.connect"))
-                    }
-                }
+                conversationRow
             } footer: {
                 VStack(alignment: .leading, spacing: 4) {
-                    if model.active { Text("Settings apply to the next conversation.") }
+                    if !conversations.live.isEmpty { Text("Settings apply to the next conversation.") }
                     if let feedback {
                         Text(feedback).foregroundStyle(failed ? Color.red : Color.secondary).accessibilityLabel(feedback)
                     }
@@ -66,6 +56,30 @@ struct AISettingsView: View {
         .onDisappear { discovery.cancel(); agentDetection.cancel(); keyDraft = ""; if loaded && config != saved { persist() } }
     }
     private var appleAvailability: AppleFoundationModel.Availability { AppleFoundationModel.availability }
+
+    /// Its button acts on the conversation AI Chat shows: it opens that conversation while it runs
+    /// and connects it once it has ended.
+    @ViewBuilder private var conversationRow: some View {
+        if conversations.current.active {
+            LabeledContent(conversationTitle) {
+                Button("Open Current Conversation") { openConversation(config) }
+            }
+        } else {
+            LabeledContent(conversationTitle) {
+                Button(config.connection == .acp ? "Connect ACP" : "Open AI Chat") {
+                    if persist() { openConversation(config) }
+                }.disabled(!config.isConfigured || !loaded || (config.connection == .apple && !appleAvailability.isReady))
+                    .background(ControlAnchor("settings.connect"))
+            }
+        }
+    }
+    /// With several conversations running, the row counts them instead of naming one.
+    private var conversationTitle: String {
+        let running = conversations.live.count
+        if running > 1 { return "\(running) conversations running" }
+        if conversations.current.active { return "Current conversation: \(conversations.current.providerTitle)" }
+        return config.isConfigured ? "Ready" : "Finish the settings above to connect"
+    }
 
     /// Apple's model has nothing to configure. What matters is whether it can run here at all, and
     /// the reason is shown rather than leaving a disabled button unexplained.

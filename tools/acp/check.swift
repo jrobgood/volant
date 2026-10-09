@@ -229,3 +229,33 @@ try polled.queue.sync {
     try advances("stopping advances the revision")
 }
 print("Passed: revisions skip unchanged snapshots and advance on every change, including in-place text.")
+
+// The helper counts conversations across connections and refuses one past the limit before it
+// resolves or launches anything.
+let full = ACPConversationSlots(limit: 0)
+let refusedAtLimit = ACPConnection(slots: full)
+do {
+    try refusedAtLimit.queue.sync { try refusedAtLimit.start(provider: "qwen", project: "/tmp/fictional-missing-project") }
+    fatalError("a start past the conversation limit was accepted")
+} catch {
+    let message = error.localizedDescription
+    require(message.contains("up to 0 conversations"), "the refusal names the limit, saw: " + message)
+    require(!message.contains("not found") && !message.contains("folder"), "the refusal comes before the provider or folder is resolved")
+}
+require(refusedAtLimit.state.phase == "disconnected" && full.inUse == 0, "a refused start takes no slot and starts nothing")
+let one = ACPConversationSlots(limit: 1)
+let unknownProvider = ACPConnection(slots: one)
+do { try unknownProvider.queue.sync { try unknownProvider.start(provider: "fictional-provider", project: "") }; fatalError("an unknown provider was accepted") } catch {}
+require(one.inUse == 0, "a start that fails after taking a slot returns it")
+let holder = ACPConnection(slots: one)
+try holder.queue.sync { try holder.takeSlot() }
+require(one.inUse == 1, "a running conversation holds a slot")
+let second = ACPConnection(slots: one)
+do { try second.queue.sync { try second.start(provider: "qwen", project: "") }; fatalError("a second conversation past a limit of one was accepted") } catch {
+    require(error.localizedDescription.contains("up to 1 conversations"), "the second start is refused at the limit")
+}
+holder.queue.sync { holder.stop() }
+require(one.inUse == 0, "stopping returns the slot")
+holder.queue.sync { holder.stop("Agent process exited.", failed: true) }
+require(one.inUse == 0, "a second stop returns nothing more")
+print("Passed: the helper refuses a conversation past its limit before launching anything, and every stop or failed start returns its slot.")

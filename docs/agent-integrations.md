@@ -212,3 +212,78 @@ Every process Volant spawns receives an explicit, complete environment built by 
 The fixed locale is intentional. Volant reads ACP JSON-RPC, Herdr JSON and the Shortcuts identifier listing as machine-readable output, so the child needs a UTF-8 codeset that is guaranteed to exist: without `LANG`, many tools fall back to the ASCII C locale and mangle non-ASCII project names, prompts and shortcut names. `Locale.current` is not used because its identifiers (for example `en_DE` or `zh-Hans_CN`) do not map one to one onto installed POSIX locales; an unknown value makes tools print `setlocale` warnings and still fall back to C, and the same input would behave differently on different Macs. An agent's reply language is set by the prompt and the provider, not chiefly by `LANG`; the locale mainly affects formatting inside tool output. git uses `C` instead because its porcelain parsing must be byte-stable and its messages are never shown.
 
 The accepted cost: text an agent's tools format through the locale, such as dates or decimal separators in a command's output, appears in US English style regardless of the owner's region. Deriving a validated per-user locale for provider processes remains possible later; it would apply only to ACP providers and must fall back to `en_US.UTF-8` when the derived name is not installed. Tests cover the builders with fictional values only; they do not run Shortcuts, pmset or providers.
+
+## Several conversations — October 9, 2026
+
+Volant ran one ACP conversation at a time. Starting another meant ending the running one, so a
+second question cost the first agent its place. The helper already builds one `AgentHost`, and so
+one `ACPConnection`, for each XPC connection, and each `ACPModel` opens its own connection, so
+several models are several independent conversations with no protocol change.
+
+**List.** `ACPConversations` holds the launcher's conversations in the order they started; one is
+current and shown in AI Chat. While a conversation runs, the header shows New beside End. New
+starts a conversation with the provider and folder saved in Settings and shows it, and the one
+that was shown keeps running in its own helper connection. With incomplete settings, or a BYOK
+connection without a stored key, it opens AI Settings instead, as opening AI Chat does. A current
+conversation that is not running and holds no transcript, such as one that failed to launch, is
+started in place. With more than one conversation to show, a row of buttons under the header lists
+them with the provider, the folder's last path component, the first line of the owner's first
+message cut to 24 characters, a raised hand while one waits for a permission and a small spinner
+while it works; selecting one shows it. New always uses the saved provider and folder, so that first
+line is what tells two such conversations apart once each has a turn. A conversation that ends while
+another is shown leaves the row at once; its in-memory transcript is discarded the next time a
+conversation is selected or New beside End opens another. The shown conversation keeps its
+transcript after End until the next Start, as before.
+
+**Limit.** Up to 6 conversations run at once (`ACPConversationLimit.live`). The app disables New
+at the limit and refuses a seventh conversation with "Volant runs up to 6 conversations at once.
+End one to start another." The helper counts the same limit in one `ACPConversationSlots` shared
+by every connection in its process; the service runs one process for the app.
+`ACPConnection.start` takes a slot before it resolves the provider or launches anything, and
+returns it if the start ends before an agent runs; `stop` returns it on process exit, every
+failure, `acpStop` and XPC invalidation. Conversations through an HTTP API or Apple's model count
+toward the app's limit and take no helper slot. The two counts can briefly disagree: the app counts
+a conversation as ended when End runs, and the helper frees its slot when that connection's
+invalidation reaches it, which nothing orders against a start on another connection. A start that
+reaches the helper first, with six conversations counted there, is refused with the limit message.
+The length of that window has not been measured.
+
+**Polling.** A poll of an unchanged conversation gets no data, since the helper skips unchanged
+snapshots, but while an agent streams each poll decodes the whole transcript on the main thread. The
+shown conversation still polls every 0.25 s, and the others poll once a second
+(`ACPModel.pollInterval`). Six streaming conversations at 0.25 s would decode up to 24 transcripts
+a second; with one shown and five behind it, the most is 9.
+
+**Launcher and Settings.** With one live conversation, the AI Chat row in search looks as it did.
+With several it stays one row: AI Chat, then a badge per live conversation with its provider, the
+same first line of its first message and a raised hand while it waits for a permission. A badge
+opens its conversation. Open conversation opens the first one waiting for a permission, else the
+shown one while it runs, else the first running one. It never opens an ended conversation, because
+opening AI Chat on one can start a new conversation in its place. Settings → AI reads
+"N conversations running" when more than one runs; its button opens the shown conversation, or
+connects it once it has ended, as before.
+
+**Resume.** Every conversation shares the one record under `acp.lastConversation`. A conversation
+writes it once, when it is ready and holds its first owner turn, so the record names the
+conversation that wrote it last. A refused `session/load` clears the record only while it still
+names the session that conversation asked to load, so a record another conversation wrote since
+survives. Each conversation reads the record when it is made, so a refusal also tells every other
+conversation to stop offering that session, including one made while the load ran. Resume is not
+offered for a session another live conversation holds or is loading, so Volant never runs one
+session in two agent processes, and the shown conversation's header updates when a conversation
+behind it starts or ends.
+
+Evidence: `ACPConversationSlotsTests` in Core (5 tests, including 200 concurrent acquire and
+release pairs that never exceed the limit). A new `tools/acp/check.swift` case refuses a start at
+the limit before the provider or folder is resolved, and returns the slot after a failed start and
+on stop; altered copies of the helper without the release in `stop`, or taking the slot after the
+folder is resolved, fail it. `ACPConversationsTests` (12 tests) covers New, reuse of an unused
+conversation, the limit, dropping ended conversations, the poll intervals, which changes reach
+observers, the launcher's choice of conversation, the shared resume record, the first-message
+label and the BYOK key check. On GitHub's macos-15 runner, `Scripts/test.sh --ci --ui never`
+passed, those 12 tests and the ACP check included; the UI job, which renders
+`ai-acp-several`, `ai-acp-several-strip` and `ai-acp-several-settings` through
+`tools/check-launcher-actions.sh`, passed; and `swift test --package-path Core` passed,
+the 5 above included. Volant's PR checks build Core but do not run its package tests. Not verified:
+several live conversations with real providers in the signed installed app, and the conversation
+buttons, the launcher row and the AI Settings count inspected in light and dark renders.

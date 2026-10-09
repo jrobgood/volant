@@ -12,7 +12,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let model = self?.panel.model else { return true }
         return !model.dictation.isListening && !model.dictationTypesAtCursor
     })
-    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(acp: panel.model.acp, dictationAccess: dictationAccess, openAI: { [weak self] configuration in
+    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(conversations: panel.model.conversations, dictationAccess: dictationAccess, openAI: { [weak self] configuration in
         guard let self else { return }
         self.settingsPanel.window?.orderOut(nil)
         self.panel.model.acp.configure(configuration)
