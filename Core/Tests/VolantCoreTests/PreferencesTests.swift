@@ -16,6 +16,20 @@ final class PreferencesTests: XCTestCase {
         XCTAssertNotNil(object["future"])
     }
 
+    /// Caffeinate keeps the display awake unless the owner turns it off; older configs get the default.
+    func testCaffeinateDisplaySettingDefaultsOnAndPatchesNarrowly() throws {
+        XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).caffeinateKeepsDisplayAwake)
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"showInDock":false,"future":{"keep":1}}"#.utf8).write(to: url)
+        try Preferences.updateBoolean("caffeinateKeepsDisplayAwake", value: false, at: url)
+        let data = try Data(contentsOf: url)
+        let config = try JSONDecoder().decode(Preferences.self, from: data)
+        XCTAssertFalse(config.caffeinateKeepsDisplayAwake)
+        XCTAssertFalse(config.showInDock)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(object["future"])
+    }
     func testPinnedHarnessRoundTripPreservesOtherSettings() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: url) }
@@ -63,5 +77,18 @@ final class PreferencesTests: XCTestCase {
         try data.write(to: url)
         XCTAssertThrowsError(try Preferences.updateBoolean("showInDock", value: true, at: url))
         XCTAssertEqual(try Data(contentsOf: url), data)
+    }
+
+    func testAppHotKeyBindingPrefersExactCopyAndKeepsLegacyEntriesReadable() throws {
+        let json = #"{"appHotKeys":[{"bundleIdentifier":"fixture.app","hotKey":"ctrl+option+l"},{"bundleIdentifier":"fixture.app","hotKey":"ctrl+option+b","path":"/Applications/Beta/Fixture.app"}]}"#
+        let entries = try JSONDecoder().decode(Preferences.self, from: Data(json.utf8)).appHotKeys
+        XCTAssertNil(entries[0].path, "entries saved before paths existed still decode")
+        XCTAssertEqual(AppHotKey.binding(in: entries, bundleIdentifier: "fixture.app", path: "/Applications/Beta/Fixture.app"), "ctrl+option+b")
+        XCTAssertEqual(AppHotKey.binding(in: entries, bundleIdentifier: "fixture.app", path: "/Applications/Fixture.app"), "ctrl+option+l")
+        let pathOnly = [AppHotKey(bundleIdentifier: "fixture.app", hotKey: "ctrl+option+b", path: "/Applications/Beta/Fixture.app")]
+        XCTAssertEqual(AppHotKey.binding(in: pathOnly, bundleIdentifier: "fixture.app", path: "/Applications/Fixture.app"), "",
+                       "a shortcut saved for one copy never belongs to another copy")
+        let encoded = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(AppHotKey(bundleIdentifier: "fixture.app", hotKey: "ctrl+k"))) as? [String: Any])
+        XCTAssertNil(encoded["path"], "a legacy entry is not given an empty path")
     }
 }

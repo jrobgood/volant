@@ -66,8 +66,24 @@ final class CaffeinateTests: XCTestCase {
     func testCommandGrammar() {
         XCTAssertEqual(CaffeinateCommand.parse("CAFFEINATE 3h display").first?.minutes, 180)
         XCTAssertEqual(CaffeinateCommand.parse("caffeinate").count, 8)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate").prefix(4).map(\.display), [true, true, true, true])
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate").suffix(4).map(\.display), [false, false, false, false])
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m").first?.display, true)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate on").first?.display, true)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m display").first?.display, true)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m system").first?.display, false)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate on mac").first?.display, false)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate system").map(\.display), [false, false, false, false])
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m").first?.title, "Caffeinate")
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m system").first?.title, "Caffeinate · Display May Sleep")
+        let systemFirst = CaffeinateCommand.parse("caffeinate", keepsDisplayAwake: false)
+        XCTAssertEqual(systemFirst.map(\.display), [false, false, false, false, true, true, true, true])
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m", keepsDisplayAwake: false).first?.display, false)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate on", keepsDisplayAwake: false).first?.display, false)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m display", keepsDisplayAwake: false).first?.display, true)
+        XCTAssertEqual(CaffeinateCommand.parse("caffeinate 30m system", keepsDisplayAwake: true).first?.display, false)
         XCTAssertEqual(CaffeinateCommand.parse("caffeinate off"), [.off])
-        for query in ["caffeinate 0m", "caffeinate -1h", "caffeinate 25h", "caffeinate 9999999999999999999999h", "caffeinate 1h garbage", "caffeinate off display", "Safari"] {
+        for query in ["caffeinate 0m", "caffeinate -1h", "caffeinate 25h", "caffeinate 9999999999999999999999h", "caffeinate 1h garbage", "caffeinate off display", "caffeinate off system", "caffeinate 30m system display", "Safari"] {
             XCTAssertTrue(CaffeinateCommand.parse(query).isEmpty, query)
         }
         XCTAssertTrue(LauncherRouting.isReserved("caffeinate"))

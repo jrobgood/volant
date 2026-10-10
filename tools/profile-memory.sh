@@ -25,8 +25,10 @@ codesign --force --sign - "$profile_output/Volant Memory Profile.app"
     swiftc --version
     sysctl hw.memsize hw.model
 } > "$profile_output/environment.txt"
+# VOLANT_MEMORY_SCENARIOS narrows a focused rerun, such as "notes notes-small".
+read -r -a profile_scenarios <<< "${VOLANT_MEMORY_SCENARIOS:-idle emoji clipboard image-decode notes notes-small acp}"
 for repetition in 1 2 3; do
-    for scenario in idle emoji clipboard image-decode notes acp; do
+    for scenario in "${profile_scenarios[@]}"; do
         "$profile_bundle/MacOS/VolantMemoryProfile" "$scenario" > "$profile_output/$scenario-$repetition.csv"
     done
 done

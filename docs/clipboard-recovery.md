@@ -14,8 +14,12 @@ ClipboardRecoveryTests uses isolated SQLite files, generated keys and injected K
 
 Native Actions fixtures use fictional encrypted rows and a fake key loader, covering unavailable/progress/recovered/empty-search states and actual Command-R button dispatch. Run in Tart in light/dark at compact/default/large launcher sizes; inspect the rendered fixtures separately. Shared classifier now includes clipboard dependencies so future error-state changes select UI checks.
 
-Signed installed-app Keychain denial/regrant remains separate evidence; do not revoke owner access to simulate failure. This change does not implement mixed image/text capture (#30), image memory budgets (#17) or Keychain recovery for other services.
+Signed installed-app Keychain denial/regrant remains separate evidence; do not revoke owner access to simulate failure. This change does not implement image memory budgets (#17) or Keychain recovery for other services.
 
 ## Prevention
 
 Treat missing secrets differently from inaccessible secrets. Never regenerate encryption keys on arbitrary lookup failure. Keep recovery injectable, preserve ciphertext, and test that a successful Retry does not replace a later launcher query. These failure/persistence checks and native UI fixtures run in CI; real OS Keychain prompt behavior is not established by fixtures.
+
+## Mixed image and text copies
+
+Issue #30: a copy carrying both text and an image was stored as text only, and text over the 256 KB cap aborted the poll before the image was read. `PasteboardCapture` (VolantCore) now judges each representation independently: text within the cap and a PNG (or TIFF converted to PNG) within 8 MB are both recorded, the image last so it is the newest row. Oversized text no longer blocks the image. `PasteboardFilter` exclusions, size caps and encryption are unchanged. JPEG, PDF and file-URL representations are still not captured. `PasteboardCaptureTests` uses fictional bytes only; whether a given design app writes a non-empty string beside its image needs a real copy from that app.

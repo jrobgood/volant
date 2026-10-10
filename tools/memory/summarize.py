@@ -6,7 +6,9 @@ import sys
 from pathlib import Path
 
 root = Path(sys.argv[1])
-scenarios = ("idle", "emoji", "clipboard", "image-decode", "notes", "acp")
+scenarios = [name for name in ("idle", "emoji", "clipboard", "image-decode", "notes", "notes-small", "acp")
+             if (root / f"{name}-1.csv").exists()]
+assert scenarios, "No profile output"
 print("| Workload | Phase | Footprint MiB | Live heap MiB | Sampled peak MiB | Time ms |")
 print("| --- | --- | ---: | ---: | ---: | ---: |")
 for scenario in scenarios:

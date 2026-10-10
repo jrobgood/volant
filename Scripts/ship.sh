@@ -53,11 +53,17 @@ wait_for_merge() {
   done
 }
 
-# Builds the website at the worktree's checkout and deploys the Worker, printing its version ID.
+# Builds the website at the worktree's checkout and deploys the Worker with the project's pinned
+# Wrangler, printing its version ID. Install scripts are skipped: the prebuilt image binaries are
+# already in the lockfile, and sharp's install check otherwise falls back to a failing source build.
 deploy_site() {
   local label="$1" version
-  (cd "$WT/website" && npm ci --no-audit --no-fund --loglevel=error > /dev/null && npm run build > "$LOGS/site-build-$label.log" 2>&1)
-  (cd "$WT/website" && npx wrangler deploy --config dist/server/wrangler.json) > "$LOGS/deploy-$label.log" 2>&1
+  rm -rf "$WT/website/dist"
+  (cd "$WT/website" && npm ci --ignore-scripts --no-audit --no-fund --loglevel=error) > "$LOGS/npm-$label.log" 2>&1 \
+    || fail "npm ci failed; see $LOGS/npm-$label.log"
+  (cd "$WT/website" && npm run build) > "$LOGS/site-build-$label.log" 2>&1 || fail "website build failed; see $LOGS/site-build-$label.log"
+  (cd "$WT/website" && npx --no-install wrangler deploy --config dist/server/wrangler.json) > "$LOGS/deploy-$label.log" 2>&1 \
+    || fail "wrangler deploy failed; see $LOGS/deploy-$label.log"
   version="$(sed -n 's/.*Current Version ID: \([0-9a-f-]*\).*/\1/p' "$LOGS/deploy-$label.log" | head -1)"
   [[ -n "$version" ]] || fail "wrangler reported no Worker version; see $LOGS/deploy-$label.log"
   echo "$version"

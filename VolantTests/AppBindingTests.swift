@@ -39,6 +39,44 @@ final class AppBindingTests: XCTestCase {
         XCTAssertEqual(latest.aliases["another"], "/Fixture.app")
     }
 
+    func testAppShortcutsAreKeyedByCopyAndMigrateLegacyEntries() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let url = root.appendingPathComponent("config.json")
+        let release = "/Applications/Fixture.app", beta = "/Applications/Beta/Fixture.app"
+        try Data(#"{"unknown":{"preserve":true},"appHotKeys":[{"bundleIdentifier":"test.fixture","hotKey":"ctrl+option+f","future":7}]}"#.utf8).write(to: url)
+        var config = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url))
+        XCTAssertEqual(AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: "test.fixture", path: beta), "ctrl+option+f",
+                       "an unedited legacy entry still shows for every copy")
+        _ = try AppBindingStore.updateHotKey(bundleID: "test.fixture", path: beta, value: "ctrl+option+b", expectedValue: "ctrl+option+f",
+                                             at: url, available: { _ in true })
+        var object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        var entries = try XCTUnwrap(object["appHotKeys"] as? [[String: Any]])
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries[0]["path"] as? String, beta, "editing a legacy entry records the selected copy")
+        XCTAssertEqual(entries[0]["future"] as? Int, 7, "unknown entry fields survive migration")
+        XCTAssertEqual((object["unknown"] as? [String: Bool])?["preserve"], true)
+        config = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url))
+        XCTAssertEqual(AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: "test.fixture", path: release), "")
+        XCTAssertThrowsError(try AppBindingStore.updateHotKey(bundleID: "test.fixture", path: release, value: "ctrl+option+b", expectedValue: "",
+                                                              at: url, available: { _ in true }), "two copies cannot share one shortcut")
+        _ = try AppBindingStore.updateHotKey(bundleID: "test.fixture", path: release, value: "ctrl+option+r", expectedValue: "",
+                                             at: url, available: { _ in true })
+        config = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url))
+        XCTAssertEqual(AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: "test.fixture", path: release), "ctrl+option+r")
+        XCTAssertEqual(AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: "test.fixture", path: beta), "ctrl+option+b")
+        let saved = try Data(contentsOf: url)
+        XCTAssertThrowsError(try AppBindingStore.updateHotKey(bundleID: "test.fixture", path: beta, value: "ctrl+option+x", expectedValue: "ctrl+option+f",
+                                                              at: url, available: { _ in true }), "a stale editor is rejected")
+        XCTAssertEqual(try Data(contentsOf: url), saved)
+        _ = try AppBindingStore.updateHotKey(bundleID: "test.fixture", path: beta, value: "", expectedValue: "ctrl+option+b",
+                                             at: url, available: { _ in true })
+        object = try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as! [String: Any]
+        entries = try XCTUnwrap(object["appHotKeys"] as? [[String: Any]])
+        XCTAssertEqual(entries.map { $0["path"] as? String }, [release], "clearing one copy leaves the other copy's shortcut")
+    }
+
     func testDictationShortcutSavesFromSettingsAndJoinsDuplicateChecks() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)

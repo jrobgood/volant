@@ -8,9 +8,9 @@ struct BindingFailure: LocalizedError {
 }
 
 /// Patch only this app's binding, preserving unknown fields and unrelated aliases.
+/// Shortcuts are keyed by the application copy's path so two installed copies of one bundle identifier
+/// keep separate bindings. Saving over a legacy entry without a path keeps its unknown fields and adds the path.
 enum AppBindingStore {
-
-
     @discardableResult
     static func save(bundleID: String, path: String, originalAlias: String, alias: String, hotKey: String,
                      expected: Data, at url: URL, available: (KeyCombo) -> Bool) throws -> Data {
@@ -24,7 +24,8 @@ enum AppBindingStore {
             guard let combo = KeyCombo(parsing: hotKey), combo.carbonModifiers & UInt32(cmdKey | controlKey | optionKey) != 0 else {
                 throw BindingFailure(message: "Include Command, Control or Option in a global shortcut.")
             }
-            let others = Array(GlobalShortcutStore.bindings(config).values) + config.appHotKeys.filter { $0.bundleIdentifier != bundleID }.map(\.hotKey)
+            let own = AppHotKey.bindingIndex(in: config.appHotKeys, bundleIdentifier: bundleID, path: path)
+            let others = Array(GlobalShortcutStore.bindings(config).values) + config.appHotKeys.indices.filter { $0 != own }.map { config.appHotKeys[$0].hotKey }
             guard !others.contains(where: { KeyCombo(parsing: $0) == combo }) else { throw BindingFailure(message: "That shortcut is already assigned in Volant.") }
             guard available(combo) else { throw BindingFailure(message: "macOS or another app is using that shortcut. Choose another combination.") }
         }
@@ -33,11 +34,13 @@ enum AppBindingStore {
         if !alias.isEmpty { aliases[alias] = path }
         object["aliases"] = aliases
         var entries = object["appHotKeys"] as? [[String: Any]] ?? []
-        var entry = entries.first { $0["bundleIdentifier"] as? String == bundleID } ?? [:]
-        entries.removeAll { $0["bundleIdentifier"] as? String == bundleID }
+        let parsed = entries.map { AppHotKey(bundleIdentifier: $0["bundleIdentifier"] as? String ?? "", hotKey: $0["hotKey"] as? String ?? "", path: $0["path"] as? String) }
+        var entry: [String: Any] = [:]
+        if let index = AppHotKey.bindingIndex(in: parsed, bundleIdentifier: bundleID, path: path) { entry = entries.remove(at: index) }
         if !hotKey.isEmpty {
             entry["bundleIdentifier"] = bundleID
             entry["hotKey"] = hotKey
+            entry["path"] = path
             entries.append(entry)
         }
         object["appHotKeys"] = entries
@@ -80,13 +83,13 @@ enum AppBindingStore {
         try updated.write(to: url, options: .atomic)
     }
 
-    static func updateHotKey(bundleID: String, value: String, expectedValue: String, at url: URL,
+    static func updateHotKey(bundleID: String, path: String, value: String, expectedValue: String, at url: URL,
                              available: (KeyCombo) -> Bool) throws -> Data {
         let data = try Data(contentsOf: url)
         let config = try JSONDecoder().decode(Preferences.self, from: data)
-        let current = config.appHotKeys.first { $0.bundleIdentifier == bundleID }?.hotKey ?? ""
+        let current = AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: bundleID, path: path)
         guard current == expectedValue else { throw BindingFailure(message: "This app shortcut changed. Reload before trying again.") }
-        return try save(bundleID: bundleID, path: "", originalAlias: "", alias: "", hotKey: value, expected: data, at: url) { combo in
+        return try save(bundleID: bundleID, path: path, originalAlias: "", alias: "", hotKey: value, expected: data, at: url) { combo in
             combo == KeyCombo(parsing: current) || available(combo)
         }
     }

@@ -199,3 +199,16 @@ replacing the record, saving only after an owner turn, and clearing a rejected r
 an isolated defaults suite; other ACP model tests use the same isolated suite. Not verified: the signed installed app
 resuming a real Claude Code, Codex or OpenCode conversation, and the Resume and New buttons in
 native light and dark renders.
+
+## Spawned process environments
+
+Every process Volant spawns receives an explicit, complete environment built by `ChildProcessEnvironment` in VolantCore; none inherits the caller's. The base is `HOME`, `USER`, a fixed `PATH` and `LANG=en_US.UTF-8`. Each spawn adds only what it names:
+
+- ACP providers: the provider executable's folder first, then `~/.local/bin`, Homebrew and the system folders including `sbin`, plus the resolver's launch variables such as `CLAUDE_CODE_EXECUTABLE`.
+- Herdr CLI: `~/.local/bin`, Homebrew and system folders without `sbin`, plus `SSH_AUTH_SOCK` when the helper has one, for saved remote machines.
+- Apple tools (`/usr/bin/shortcuts` in the agent helper, `/usr/bin/pmset` in the app): system folders only.
+- git status for change counts keeps its own `LC_ALL=C` environment (`RepositoryStatusCommand.environment`).
+
+The fixed locale is intentional. Volant reads ACP JSON-RPC, Herdr JSON and the Shortcuts identifier listing as machine-readable output, so the child needs a UTF-8 codeset that is guaranteed to exist: without `LANG`, many tools fall back to the ASCII C locale and mangle non-ASCII project names, prompts and shortcut names. `Locale.current` is not used because its identifiers (for example `en_DE` or `zh-Hans_CN`) do not map one to one onto installed POSIX locales; an unknown value makes tools print `setlocale` warnings and still fall back to C, and the same input would behave differently on different Macs. An agent's reply language is set by the prompt and the provider, not chiefly by `LANG`; the locale mainly affects formatting inside tool output. git uses `C` instead because its porcelain parsing must be byte-stable and its messages are never shown.
+
+The accepted cost: text an agent's tools format through the locale, such as dates or decimal separators in a command's output, appears in US English style regardless of the owner's region. Deriving a validated per-user locale for provider processes remains possible later; it would apply only to ACP providers and must fall back to `en_US.UTF-8` when the derived name is not installed. Tests cover the builders with fictional values only; they do not run Shortcuts, pmset or providers.

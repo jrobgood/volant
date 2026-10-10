@@ -44,6 +44,8 @@ export default function ClipboardAndSnippets() {
         PNG and TIFF copies are stored encrypted exactly like text, shown as
         thumbnails under <code>clip</code>, and put back on the pasteboard with
         Return. TIFF copies are stored as PNG. Images are capped at 8 MB each.
+        A copy that carries both an image and text, as many design apps make,
+        records both.
       </p>
 
       <h3>How it is protected</h3>

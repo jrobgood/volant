@@ -134,6 +134,13 @@ private struct SettingsView: View {
                 }
             }
             Section {
+                Toggle("Keep display on and unlocked", isOn: boolean("caffeinateKeepsDisplayAwake", state.config.caffeinateKeepsDisplayAwake))
+            } header: {
+                Text("Caffeinate")
+            } footer: {
+                SettingsFooter("Caffeinate sessions keep the display from dimming, sleeping or locking. Turn this off to keep only the Mac awake and let the display sleep. Add display or system to a caffeinate command to choose for one session.")
+            }
+            Section {
                 if !state.registrationErrors.isEmpty { Text(state.registrationErrors.joined(separator: "\n")).foregroundStyle(.red) }
                 GlobalShortcutRow(title: "Show Volant", key: "summonHotKey", value: state.config.summonHotKey, configURL: configURL, onChange: onChange)
                 GlobalShortcutRow(title: "Open Notes", key: "notesHotKey", value: state.config.notesHotKey, configURL: configURL, onChange: onChange)

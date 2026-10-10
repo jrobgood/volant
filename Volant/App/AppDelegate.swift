@@ -42,7 +42,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private lazy var clipboardStore = ClipboardStore(retention: config.clipboardRetention)
     private lazy var clipboardMonitor = ClipboardMonitor(store: clipboardStore)
     private let notesStore = NotesStore()
-    private lazy var notesPanel = NotesPanel(store: notesStore)
+    private lazy var notesPanel: NotesPanel = {
+        let notes = NotesPanel(store: notesStore)
+        notes.floatingPeer = panel
+        panel.floatingPeer = notes
+        return notes
+    }()
     private lazy var panel: LauncherPanel = LauncherPanel(index: index, clipboard: clipboardStore, notes: notesStore, config: config) { [weak self] action in
         switch action {
         case .settings: self?.showSettings()

@@ -49,6 +49,7 @@ enum SystemActions {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/pmset")
         process.arguments = [argument]
+        process.environment = ChildProcessEnvironment.appleTool(home: NSHomeDirectory(), user: NSUserName())
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
         do { try process.run() } catch { return -1 }

@@ -41,6 +41,7 @@ check(plan.snippets.count == 1, "snippet name/keyword conflicts")
 check(plan.snippets[0].body == "{cursor} {clipboard}", "unsupported token preserved")
 check(plan.quicklinks.count == 1 && plan.quicklinks[0].url.hasSuffix("{query}"), "query translation and scheme rejection")
 check(plan.aliases == ["fx": "/Applications/Fiction.app"] && plan.hotkeys.count == 1, "app mapping and internal conflicts")
+check(plan.hotkeys.first?.path == "/Applications/Fiction.app", "imported hotkey targets the exported application copy")
 check(plan.notes.count == 1 && plan.report.contains(where: { $0.contains("rich-text") }), "rich notes reported")
 rejects("empty selection", expected: "Select at least") { _ = try plan.apply([]) }
 let recovery = try plan.apply([.snippets, .quicklinks, .aliases, .notes])

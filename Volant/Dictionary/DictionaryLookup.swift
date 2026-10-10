@@ -25,6 +25,34 @@ enum DictionaryQuery {
               end == units.count || !(0xDC00...0xDFFF).contains(units[end]) else { return nil }
         return String(text[valid])
     }
+    private static let ignorable = CharacterSet.punctuationCharacters.union(.symbols).union(.whitespacesAndNewlines)
+
+    /// The UTF-16 offset of the first letter or digit, so detection skips an opening quote or bracket.
+    static func termStart(_ text: String) -> CFIndex {
+        guard let index = text.unicodeScalars.firstIndex(where: { !ignorable.contains($0) }) else { return 0 }
+        return index.utf16Offset(in: text)
+    }
+
+    /// Whether a detected range leaves out only punctuation, symbols or whitespace. Surrounding quotes or a trailing
+    /// period are dropped, but a phrase is never reduced to its first word.
+    static func covers(_ text: String, range: CFRange) -> Bool {
+        guard string(in: text, range: range) != nil else { return false }
+        let source = text as NSString
+        let outside = source.substring(to: range.location) + source.substring(from: range.location + range.length)
+        return outside.unicodeScalars.allSatisfy(ignorable.contains)
+    }
+
+    /// Ranges to pass to `DCSCopyTextDefinition`, in order. The whole explicit input comes first, so phrases are
+    /// defined as written and Dictionary Services can normalize plurals and inflections itself. The range
+    /// `DCSGetTermRangeInString` reports follows only when it is valid and covers every letter of the input.
+    static func candidateRanges(in text: String, detect: (CFIndex) -> CFRange) -> [CFRange] {
+        let full = CFRange(location: 0, length: text.utf16.count)
+        guard full.length > 0 else { return [] }
+        let detected = detect(termStart(text))
+        guard covers(text, range: detected), detected.location != 0 || detected.length != full.length else { return [full] }
+        return [full, detected]
+    }
+
     static func url(for term: String) -> URL? {
         let term = term.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty, term.count <= limit,
@@ -36,34 +64,29 @@ enum DictionaryQuery {
 /// Dictionary Services is synchronous. An actor serializes calls away from the UI executor.
 actor NativeDictionaryLookup {
     static let shared = NativeDictionaryLookup()
+
+    /// Defines the explicit input, retrying with the detected term only when Dictionary Services rejects the whole input.
+    /// Every range is validated first: an unvalidated `kCFNotFound` range raises inside `DCSCopyTextDefinition`.
     func lookup(_ text: String) throws -> DictionaryEntry? {
         try Task.checkCancellation()
         let term = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !term.isEmpty, term.count <= DictionaryQuery.limit else { return nil }
         return autoreleasepool {
-            let fullRange = CFRange(location: 0, length: term.utf16.count)
-            let detected = DCSGetTermRangeInString(nil, term as CFString, 0)
-            // The input is an explicit word/phrase. Never silently define only its first word.
-            let range = DictionaryQuery.string(in: term, range: detected) == term ? detected : fullRange
-            guard let owned = DCSCopyTextDefinition(nil, term as CFString, range) else { return nil }
-            let definition = (owned.takeRetainedValue() as String).trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !definition.isEmpty else { return nil }
-            return DictionaryEntry(term: term, definition: definition)
+            let ranges = DictionaryQuery.candidateRanges(in: term) { DCSGetTermRangeInString(nil, term as CFString, $0) }
+            for range in ranges {
+                guard let owned = DCSCopyTextDefinition(nil, term as CFString, range) else { continue }
+                let definition = (owned.takeRetainedValue() as String).trimmingCharacters(in: .whitespacesAndNewlines)
+                if !definition.isEmpty { return DictionaryEntry(term: term, definition: definition) }
+            }
+            return nil
         }
     }
 }
 
 enum DictionaryApplication {
-    @MainActor static func open(_ term: String) async throws {
-        guard let url = DictionaryQuery.url(for: term),
-              let app = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.Dictionary") else {
-            throw CocoaError(.fileNoSuchFile)
-        }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            NSWorkspace.shared.open([url], withApplicationAt: app, configuration: NSWorkspace.OpenConfiguration()) { _, error in
-                if let error { continuation.resume(throwing: error) }
-                else { continuation.resume() }
-            }
-        }
+    /// Opens the term in the user's `dict` handler, falling back to Apple's Dictionary only when none is registered.
+    @MainActor static func open(_ term: String, workspace: HandlerWorkspace = NSWorkspace.shared) async throws {
+        guard let url = DictionaryQuery.url(for: term) else { throw CocoaError(.fileNoSuchFile) }
+        try await DefaultHandler.open(url, fallback: DefaultHandler.dictionaryBundleIdentifier, workspace: workspace)
     }
 }

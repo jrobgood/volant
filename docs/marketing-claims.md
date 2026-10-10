@@ -4,7 +4,7 @@
 
 Keep work moving without leaving your flow: apps, answers, notes, and agents within reach. Keep the established “Your Mac. Your agents. One shortcut away.” headline and graphite/coral site system.
 
-The public artifact is Volant 0.2.2, build 10, from `e45903c` (October 9, 2026). It adds the Volant menu, list edge fades under a translucent footer, the Herdr footer status, and the re-landed Notes editor theme colors over 0.2.1 build 9 (`20adedf`). The rows below that were Coming next for 0.1.5 shipped in 0.2.0, verified against the notarized DMG: version, both architectures, stapled signature, iCloud key-value and loginwindow entitlements, and the embedded Developer ID profile. Advance claims only after verifying the actual distributed artifact; merging a website PR does not distribute a new app or publish the website.
+The public artifact is Volant 0.2.4, build 12 (October 9, 2026; build commit and notarization in `docs/release-quality.md`). It adds unit-math parentheses, daylight-saving explanations for time conversions, lazy notes loading, clipboard image capture alongside text, default-app handoff, per-copy app shortcuts and smaller fixes over 0.2.3 build 11, which added ACP conversation resume and the typing-pause fix over 0.2.2 build 10 (`e45903c`), which added the Volant menu, list edge fades under a translucent footer, the Herdr footer status, and the re-landed Notes editor theme colors. The rows below that were Coming next for 0.1.5 shipped in 0.2.0, verified against the notarized DMG: version, both architectures, stapled signature, iCloud key-value and loginwindow entitlements, and the embedded Developer ID profile. Advance claims only after verifying the actual distributed artifact; merging a website PR does not distribute a new app or publish the website.
 
 | Story | In 0.2.0 | Evidence and limits | Website treatment |
 | --- | --- | --- | --- |
@@ -15,6 +15,7 @@ The public artifact is Volant 0.2.2, build 10, from `e45903c` (October 9, 2026).
 | Local Herdr status, supported Claude/Codex responses | Yes | Local installed response evidence and isolated routing checks | Actionable agent workflows; supported questions only |
 | Saved remote Herdr machines | Yes | Fictional routing tests; compatible remote signed-app focus/answer smoke remains pending | Requirements and verification qualification in Agents docs |
 | OpenCode, Claude Code, Codex ACP conversations | Yes | Existing verified provider paths; Claude/Codex require adapters | Separate new conversations from terminal panes |
+| Resume the last ACP conversation | Yes, from 0.2.3 | #174; protocol fake-agent checks, model tests, native light/dark header fixture; owner resumed a real conversation in the installed app; only the latest conversation per provider and folder | Agents docs; no conversation picker claim |
 | Cursor ACP | Launch path only | End-to-end verification pending | Explicit qualification |
 | API/local models | Yes | HTTP and signed-helper fixtures; live authenticated provider/local inference remains separate | Implemented options, no blanket readiness claim |
 | Apple Intelligence | Yes, eligible macOS 26+ | Signed sandboxed streamed probe; installed UI remains unverified | OS and eligibility requirement, docs limitation |

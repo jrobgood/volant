@@ -109,7 +109,7 @@ struct RaycastImportPlan {
             if hasHotkey {
                 guard let key = hotkey(command["macosHotkey"]), let combo = KeyCombo(parsing: key) else { plan.report.append("\(app.name): unsupported hotkey; skipped."); continue }
                 guard !appIDs.contains(app.id), !combos.contains(combo) else { plan.report.append("\(app.name): existing app binding or key conflict; skipped."); continue }
-                plan.hotkeys.append(AppHotKey(bundleIdentifier: app.id, hotKey: key)); appIDs.insert(app.id); combos.append(combo)
+                plan.hotkeys.append(AppHotKey(bundleIdentifier: app.id, hotKey: key, path: String(id[split.upperBound...]))); appIDs.insert(app.id); combos.append(combo)
             }
         }
         for row in rows("notes", "notes") {

@@ -5,10 +5,12 @@ import VolantCore
 final class AppleShortcutsHost {
     private let lock = NSLock()
     private var runningProcess: Process?
+    private static let environment = ChildProcessEnvironment.appleTool(home: FileManager.default.homeDirectoryForCurrentUser.path, user: NSUserName())
     static func list() throws -> Data {
         let process = Process(), pipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
         process.arguments = ["list", "--show-identifiers"]
+        process.environment = environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = pipe
         process.standardError = FileHandle.nullDevice
@@ -37,6 +39,7 @@ final class AppleShortcutsHost {
         lock.unlock()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/shortcuts")
         process.arguments = ["run", uuid.uuidString]
+        process.environment = Self.environment
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice

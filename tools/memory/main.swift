@@ -47,6 +47,13 @@ func phase(_ name: String, units: Int = 0, _ body: () throws -> Void) rethrows {
     let elapsed = (ProcessInfo.processInfo.systemUptime - start) * 1000
     print("\(scenario),\(name),\(current.0),\(current.1),\(max(peak, current.0)),\(heap.size_in_use),\(String(format: "%.3f", elapsed)),\(units)")
 }
+/// Complete notes search: the immediate matches, then the background file scan, waited for on the main run loop.
+func searchAll(_ store: NotesStore, _ term: String) -> [Note] {
+    var result: [Note]?
+    guard store.searchFiles(term, limit: Int.max, completion: { result = $0 }) != nil else { return store.search(term, limit: Int.max) }
+    while result == nil { _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+    return result!
+}
 func settle(_ name: String) { phase(name) { Thread.sleep(forTimeInterval: 0.3) } }
 func clipboard(_ name: String = "clips") -> ClipboardStore {
     ClipboardStore(retention: 100, storageURL: root.appendingPathComponent(name + ".sqlite"), encryptionKey: SymmetricKey(size: .bits256))
@@ -127,15 +134,23 @@ case "clipboard", "image-decode":
         }
     }
     store = nil; settle("released")
-case "notes":
-    phase("seed_notebook", units: 1000) {
-        let body = String(repeating: "Fictional profiling text for note search.\n", count: 1600)
-        for index in 0..<1000 { try! ("# Fixture \(index)\n" + body).write(to: root.appendingPathComponent("\(index).md"), atomically: false, encoding: .utf8) }
+case "notes", "notes-small":
+    let count = scenario == "notes" ? 1000 : 300
+    phase("seed_notebook", units: count) {
+        let body = String(repeating: "Fictional profiling text for note search.\n", count: scenario == "notes" ? 1600 : 100)
+        for index in 0..<count { try! ("# Fixture \(index)\n" + body).write(to: root.appendingPathComponent("\(index).md"), atomically: false, encoding: .utf8) }
     }
     var store: NotesStore?
-    phase("notebook_loaded", units: 1000) { store = NotesStore(directory: root); precondition(store!.notes.count == 1000) }
+    phase("notebook_loaded", units: count) { store = NotesStore(directory: root); precondition(store!.notes.count == count) }
     for batch in 1...3 {
-        phase("reload_\(batch)", units: 1000) { store!.reload(); precondition(store!.search("profiling").count == 8) }
+        phase("reload_\(batch)", units: count) { store!.reload(); precondition(store!.search("profiling").count == 8) }
+    }
+    let typed = "absent fixture phrase"
+    phase("main_thread_keystrokes_10", units: 10) {
+        for length in 12...21 { autoreleasepool { precondition(store!.search(String(typed.prefix(length))).isEmpty) } }
+    }
+    phase("search_absent_3", units: count) {
+        for _ in 0..<3 { autoreleasepool { precondition(searchAll(store!, "absent fixture phrase").isEmpty) } }
     }
     store = nil; settle("released")
 case "acp":

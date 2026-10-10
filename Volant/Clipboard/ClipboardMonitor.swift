@@ -1,7 +1,7 @@
 import AppKit
 import VolantCore
 
-/// Polls the general pasteboard's change count and records plain text that passes the filter.
+/// Polls the general pasteboard's change count and records the text and image entries of copies that pass the filter.
 final class ClipboardMonitor {
     private let store: ClipboardStore
     private var timer: Timer?
@@ -24,14 +24,14 @@ final class ClipboardMonitor {
         lastChange = pb.changeCount
         let types = (pb.types ?? []).map(\.rawValue)
         guard PasteboardFilter.shouldRecord(types: types) else { return }
-        if let text = pb.string(forType: .string), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard text.utf8.count <= 256_000 else { return }
-            store.record(text)
-            return
+        let entries = PasteboardCapture.entries(text: pb.string(forType: .string)) {
+            pb.data(forType: .png) ?? pb.data(forType: .tiff).flatMap { NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }
         }
-        if let png = pb.data(forType: .png) ?? pb.data(forType: .tiff).flatMap({ NSBitmapImageRep(data: $0)?.representation(using: .png, properties: [:]) }),
-           png.count <= 8_000_000 {
-            store.recordImage(png)
+        for entry in entries {
+            switch entry {
+            case .text(let text): store.record(text)
+            case .image(let png): store.recordImage(png)
+            }
         }
     }
 }

@@ -13,7 +13,7 @@ The launcher now recognizes whole-query timezone expressions locally, without a 
 
 Results use a readable AM/PM clock, Midnight/Noon for exact boundaries, the requested abbreviation or city, and “your time” for the local destination. Same-day implicit conversions omit the date; day rollover adds tomorrow/yesterday relative to the user's local calendar day. Explicit-date queries retain a localized calendar date. Current-time queries compare destination day with the injected local day. Return copies the same readable answer through the existing Calculation row. Date omitted means today's date in the source zone. `local`, `here` and `my time` select the Mac's timezone. UTC and GMT are fixed offsets. Regional abbreviations (EST/EDT, PST/PDT, MST/MDT, CET/CEST, BST, JST) select their region's clock, like cities and IANA identifiers, and the label names the abbreviation in effect on that date: in summer `1pm EST in CET` is `7:00 PM CEST`.
 
-Queries are limited to 256 UTF-8 bytes, consumed entirely, and evaluated only for explicit time forms. Ambiguous CST/IST/AST alone (see Ambiguous abbreviations below), broad country names, invalid dates, incomplete syntax, DST gaps and repeated wall times produce no answer. This first slice does not yet present a disambiguation/error row. Supported city aliases are deliberately small and maintained independently; IANA identifiers provide broader coverage.
+Queries are limited to 256 UTF-8 bytes, consumed entirely, and evaluated only for explicit time forms. Ambiguous CST/IST/AST alone and ambiguous city names offer a card per region (see below), and daylight-saving gaps and repeated wall times are explained (see Daylight-saving transitions below). Broad country names, invalid dates and incomplete syntax produce no answer and no error row, so nothing appears while a query is still being typed. Supported city aliases are deliberately small and maintained independently; IANA identifiers provide broader coverage.
 
 ## Quality decision
 
@@ -70,11 +70,21 @@ IATA codes resolve after every city source: `time in JFK`, `3pm LAX in LHR`, `di
 
 `time diff Tokyo`, `diff New York`, `time difference with Kolkata` compare a place's clock with the owner's right now: `7 hours ahead`, `6 hours behind`, `3 hours 30 minutes ahead`, or `Same time`, tagged with the time there (`6:00 PM in Tokyo`). Any name the converter resolves works, including regional abbreviations, which name the abbreviation in effect (`EDT is 6 hours behind`). Copy gives the sentence (`Tokyo is 7 hours ahead`). The offset is the current one, so it changes across either side's daylight-saving switch.
 
+## Daylight-saving transitions
+
+A wall time is never guessed. When a complete, parseable question names a time its source zone skips or repeats that day, the launcher explains instead of answering nothing:
+
+- Skipped (spring forward): `2026-03-08 2:30am New York in Paris` offers one card for the nearest valid time, the instant clocks jump to: input `2026-03-08 3:00am New York in Paris`, answer `8:00 AM in Paris`, tagged `2:30 AM is skipped · clocks jump to 3:00 AM`. The rewritten clock keeps the owner's style (`3:00am` or `03:00`).
+- Repeated (fall back): `2026-11-01 1:30am New York in Paris` offers a card per reading, `2026-11-01 1:30am (EDT) New York in Paris` → `6:30 AM in Paris` and `… (EST) …` → `7:30 AM in Paris`. Berlin reads `(CEST)`/`(CET)`. A reading names the region abbreviation where Volant knows one (EST/EDT, CET/CEST, GMT/BST, MST/MDT, PST/PDT), else the zone's alphabetic abbreviation (`CDT`), else `daylight`/`standard`, and `earlier`/`later` if a zone changed its offset without either; GMT-style offsets are never used.
+
+These use the same card mechanism as ambiguous abbreviations and cities, so each card's input is a query that answers on its own: Return copies its answer and Command-Return continues from it. A reading in parentheses straight after the clock and followed by the source zone picks one side of an overlap, and must name the reading actually in effect, so `2026-07-01 1:30am (EST) New York` and `(EDT)` on a skipped time have no answer. With nothing after it, or only `in`/`to`, the parenthesized word is the source zone as before: `1pm (est)` and `1pm (est) in CET` read as `1pm est` and `1pm est in CET`. Cards therefore always write the source after the reading: `1:30am in New York` becomes `1:30am (EDT) New York`, and a question on the owner's clock gains `local` (`tomorrow 1:30am (EDT) local`, which reads like `tomorrow 1:30am`). Region choices and transitions combine: `2026-03-08 2:30am cst in utc` offers the corrected US card and the unaffected China card. An ambiguous abbreviation or city still offers at most three cards, even when its alternatives land on repeated times: `2026-11-01 1:30am cst in utc` shows US (CDT), US (CST) and China. Relative days and the local zone work too: on October 31 in New York, `tomorrow 1:30am` offers both readings.
+
+Incomplete questions (`2026-11-01 1:30am New York in`, `… 1:30am (ED`) never reach the transition check, so no explanation or error row appears while typing. Core tests use an injected clock and local zone with fixed dates on both sides of the 2026 America/New_York and Europe/Berlin transitions; the launcher fixture captures the skipped and repeated cards.
+
 ## Next concrete work
 
-1. Surface ambiguous/repeated times with explicit choices and nonexistent-time explanations, without error banners during incomplete typing.
-2. Implement compatible mixed-unit arithmetic as designed in `calculator-expression-design.md`.
-3. Add natural-language percentages and date/duration arithmetic, with explicit calendar policies.
-4. Add currency rates only with a provider, timestamps and stale/offline behavior.
+1. Implement compatible mixed-unit arithmetic as designed in `calculator-expression-design.md`.
+2. Add natural-language percentages and date/duration arithmetic, with explicit calendar policies.
+3. Add currency rates only with a provider, timestamps and stale/offline behavior.
 
 This implements the timezone slice, not full Raycast calculator parity. Signed installed-app verification and release distribution remain separate evidence/work.

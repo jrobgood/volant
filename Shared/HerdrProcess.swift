@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import VolantCore
 
 /// Bounded in-memory output. A stalled SSH child cannot hold the helper's pipe read open forever.
 enum HerdrProcess {
@@ -9,12 +10,8 @@ enum HerdrProcess {
         task.executableURL = executable
         task.arguments = arguments
         task.currentDirectoryURL = URL(fileURLWithPath: directory ?? home)
-        if let environment {
-            task.environment = environment
-        } else {
-            task.environment = ["HOME": home, "USER": NSUserName(), "PATH": home + "/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", "LANG": "en_US.UTF-8"]
-            if let socket = ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"] { task.environment?["SSH_AUTH_SOCK"] = socket }
-        }
+        task.environment = environment ?? ChildProcessEnvironment.herdr(home: home, user: NSUserName(),
+                                                                         sshAuthSocket: ProcessInfo.processInfo.environment["SSH_AUTH_SOCK"])
         task.standardInput = FileHandle.nullDevice
         task.standardError = FileHandle.nullDevice
         task.standardOutput = output

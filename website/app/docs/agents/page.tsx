@@ -152,6 +152,14 @@ export default function Agents() {
         attach to an existing terminal session, and no existing Herdr pane
         receives prompt input.
       </p>
+      <p>
+        <strong>Resume</strong> picks up where you left off. After you end a
+        conversation or quit Volant, AI Chat offers Resume for your last
+        conversation with the same provider and folder. It replays the history
+        the provider kept and continues that same session; very long
+        conversations show their most recent part. If a provider can&rsquo;t
+        load earlier conversations, Resume says so and starts nothing.
+      </p>
 
       <h3>Provider status</h3>
       <div className="docs-table-scroll">
@@ -226,8 +234,9 @@ export default function Agents() {
 
       <h2>Not yet</h2>
       <p>
-        Snippet and file attachments, ACP model and mode selection, session
-        resume, and provider-specific extensions are still ahead. Context is
+        Snippet and file attachments, ACP model and mode selection, choosing
+        among older conversations, and provider-specific extensions are still
+        ahead. Context is
         never sent automatically, and that will not change quietly.
       </p>
 

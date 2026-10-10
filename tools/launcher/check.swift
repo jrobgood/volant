@@ -80,7 +80,7 @@ try rep.representation(using: .jpeg, properties: [.compressionFactor: 0.75])!.wr
 // Calculator answers render as cards and copy the complete single-line answer.
 model.searchesSecondarySources = false
 CurrencyRates.current = CurrencyRates(date: "2026-10-05", perEuro: ["USD": 1.25, "GBP": 0.8, "JPY": 160, "CHF": 0.95, "SEK": 11.5])
-for query in ["1pm EST in CET", "2026-12-31 3pm PST in CET", "time in Tokyo", "2 + 2", "5 km in mi", "7:30pm tomorrow", "15% tip on 42", "days until 31 Mar", "145 mins to timespan", "time diff Tokyo", "2024-03-15T14:30:00Z", "#ff6363", "oklch(70% 0.15 250)", "100 usd in eur"] {
+for query in ["1pm EST in CET", "2026-12-31 3pm PST in CET", "time in Tokyo", "2 + 2", "5 km in mi", "7:30pm tomorrow", "15% tip on 42", "days until 31 Mar", "145 mins to timespan", "time diff Tokyo", "2024-03-15T14:30:00Z", "#ff6363", "oklch(70% 0.15 250)", "100 usd in eur", "2026-03-08 2:30am New York in Paris", "2026-11-01 1:30am New York in Paris"] {
     model.query = query
     RunLoop.main.run(until: Date().addingTimeInterval(0.2))
     guard case .calculation(let answer, _) = model.selectedRow else { fatalError("Missing timezone answer") }
@@ -92,7 +92,10 @@ for query in ["1pm EST in CET", "2026-12-31 3pm PST in CET", "time in Tokyo", "2
     host.layoutSubtreeIfNeeded()
     let image = host.bitmapImageRepForCachingDisplay(in: host.bounds)!
     host.cacheDisplay(in: host.bounds, to: image)
-    let name = query.hasPrefix("2026") ? "rollover" : query.hasPrefix("time diff") ? "diff" : query.hasPrefix("time") ? "clock" : query.hasPrefix("2 +") ? "arithmetic" : query.hasPrefix("5 km") ? "unit" : query.hasSuffix("tomorrow") ? "relative" : query.contains("tip") ? "percent" : query.hasPrefix("days") ? "count" : query.hasSuffix("timespan") ? "span" : query.hasPrefix("2024") ? "iso" : query.hasPrefix("100 usd") ? "currency" : query.hasPrefix("#") ? "hex" : query.hasPrefix("oklch") ? "oklch" : "conversion"
+    let cards = model.rows.compactMap { row -> CalculationAnswer? in if case .calculation(let card, _) = row { return card }; return nil }
+    if query.contains("2:30am") { verify(cards.first?.inputDetail == "2:30 AM is skipped · clocks jump to 3:00 AM", "Skipped wall time explains the nearest valid time") }
+    if query.contains("1:30am") { verify(cards.prefix(2).map(\.input) == ["2026-11-01 1:30am (EDT) New York in Paris", "2026-11-01 1:30am (EST) New York in Paris"], "Repeated wall time offers both readings") }
+    let name = query.contains("2:30am") ? "skipped" : query.contains("1:30am") ? "repeated" : query.hasPrefix("2026") ? "rollover" : query.hasPrefix("time diff") ? "diff" : query.hasPrefix("time") ? "clock" : query.hasPrefix("2 +") ? "arithmetic" : query.hasPrefix("5 km") ? "unit" : query.hasSuffix("tomorrow") ? "relative" : query.contains("tip") ? "percent" : query.hasPrefix("days") ? "count" : query.hasSuffix("timespan") ? "span" : query.hasPrefix("2024") ? "iso" : query.hasPrefix("100 usd") ? "currency" : query.hasPrefix("#") ? "hex" : query.hasPrefix("oklch") ? "oklch" : "conversion"
     try image.representation(using: .jpeg, properties: [.compressionFactor: 0.85])!.write(to:
         URL(fileURLWithPath: "/tmp/volant-launcher-time-\(name)-\(dark ? "dark" : "light").jpg"))
 }
@@ -115,6 +118,9 @@ guard case .calculation(let swapped, _) = model.selectedRow else { fatalError("M
 verify(swapped.copyText == "5 km", "Swapped conversion returns to the original amount")
 model.query = "1pm EST in"
 verify(!model.rows.contains { if case .calculation = $0 { return true }; return false }, "Incomplete time query has no answer")
+model.query = "2026-11-01 1:30am New York in"
+RunLoop.main.run(until: Date().addingTimeInterval(0.2))
+verify(!model.rows.contains { if case .calculation = $0 { return true }; return false }, "Incomplete repeated-time query has no explanation")
 // A briefly incomplete edit keeps the card's space with the last answer dimmed; it is never a row.
 model.query = "12 * 4"
 RunLoop.main.run(until: Date().addingTimeInterval(0.2))
@@ -509,6 +515,29 @@ for phase in ["starting", "working", "cancelling", "ready"] {
     sticky.toggle()
     verify(sticky.isVisible && sticky.isKeyWindow && !sticky.model.showingACP && sticky.model.query.isEmpty, "Summon returns a visible inactive conversation to search")
 }
+/// Returns whether `upper` is in front of `lower` among this process's on-screen windows.
+func isOrdered(_ upper: NSWindow, above lower: NSWindow) -> Bool {
+    let order = (NSWindow.windowNumbers(options: []) ?? []).map(\.intValue)
+    guard let top = order.firstIndex(of: upper.windowNumber), let bottom = order.firstIndex(of: lower.windowNumber) else { return false }
+    return top < bottom
+}
+let orderedNotes = NotesPanel(store: notes)
+orderedNotes.floatingPeer = sticky
+sticky.floatingPeer = orderedNotes
+sticky.model.presentAIChat()
+sticky.model.acp.state.phase = "working"
+orderedNotes.toggle()
+verify(waitUntil(stable: 0.1) { orderedNotes.isKeyWindow && sticky.isVisible }, "Notes takes key focus while the ACP conversation stays visible")
+verify(isOrdered(orderedNotes, above: sticky), "Notes opened during an ACP conversation is in front of the launcher")
+verify(sticky.model.showingACP && sticky.model.acp.state.sessionID == "fictional-session", "Opening notes preserves the ACP conversation")
+orderedNotes.cancelOperation(nil)
+verify(!orderedNotes.isVisible && sticky.isVisible && sticky.model.showingACP, "Escape in notes closes only notes")
+orderedNotes.toggle()
+verify(waitUntil(stable: 0.1) { orderedNotes.isKeyWindow } && isOrdered(orderedNotes, above: sticky), "Reopened notes returns in front of the conversation")
+sticky.toggle()
+verify(waitUntil(stable: 0.1) { sticky.isKeyWindow } && orderedNotes.isVisible && isOrdered(sticky, above: orderedNotes), "Summoning the launcher orders it in front of visible notes")
+orderedNotes.close()
+verify(!orderedNotes.isVisible && sticky.isVisible, "Closing notes leaves the launcher visible")
 sticky.cancelOperation(nil)
 verify(!sticky.isVisible && sticky.model.acp.state.sessionID == "fictional-session", "Explicit dismissal keeps the ACP session")
 RunLoop.main.run(until: Date().addingTimeInterval(0.25))
@@ -557,6 +586,35 @@ RunLoop.main.run(until: Date().addingTimeInterval(0.2))
 verify(NSScreen.screens.contains { $0.visibleFrame.contains(sticky.frame) }, "Offscreen saved position is recovered onto a visible display")
 sticky.orderOut(nil)
 print("PASS: actual ACP focus loss/refocus, explicit dismissal, draft preservation, ordinary blur, saved placement, and offscreen recovery")
+
+// Notes shortcuts with unavailable controls are absorbed instead of falling through to the alert.
+/// Builds a key-down event addressed to `window`.
+func notesKey(_ characters: String, _ flags: NSEvent.ModifierFlags, keyCode: UInt16, in window: NSWindow) -> NSEvent {
+    NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: flags, timestamp: ProcessInfo.processInfo.systemUptime,
+                     windowNumber: window.windowNumber, context: nil, characters: characters,
+                     charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode)!
+}
+let shortcutNotes = NotesStore(directory: root.appendingPathComponent("ShortcutNotes"))
+let keyNotes = NotesPanel(store: shortcutNotes)
+let keyNote = shortcutNotes.create(initialText: "Fictional shortcut note")
+keyNotes.open(noteID: keyNote.id)
+verify(waitUntil(stable: 0.1) { keyNotes.isKeyWindow }, "Notes takes key focus")
+let previewKey = notesKey("e", .command, keyCode: 14, in: keyNotes)
+let deleteKey = notesKey("\u{7F}", .command, keyCode: 51, in: keyNotes)
+keyNotes.model.show(.actions)
+RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+verify(keyNotes.performKeyEquivalent(with: previewKey), "Unavailable Command-E is absorbed under an overlay")
+verify(keyNotes.model.editing && keyNotes.model.overlay == .actions, "Absorbed Command-E changes nothing")
+verify(!keyNotes.performKeyEquivalent(with: deleteKey), "Command-Delete stays available to text editing")
+verify(!keyNotes.performKeyEquivalent(with: notesKey("j", .command, keyCode: 38, in: keyNotes)), "Unrelated combinations are not claimed")
+verify(shortcutNotes.notes.contains { $0.id == keyNote.id }, "Command-Delete under an overlay never trashes the note")
+keyNotes.model.overlay = nil
+RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+verify(keyNotes.performKeyEquivalent(with: previewKey) && waitUntil { !keyNotes.model.editing }, "Available Command-E still toggles preview")
+keyNotes.model.editing = true
+keyNotes.close()
+verify(!keyNotes.isVisible, "Notes closes after the shortcut checks")
+print("PASS: notes shortcuts absorb unavailable combinations and keep available ones")
 
 // App binding writes preserve nested unknown fields and reject conflicts/stale editors.
 let bindingURL = root.appendingPathComponent("binding-config.json")
@@ -621,10 +679,10 @@ try GlobalShortcutStore.save(key: "notesHotKey", value: "", expectedValue: "ctrl
 let removedGlobals = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: globalURL))
 verify(removedGlobals.summonHotKey.isEmpty && removedGlobals.notesHotKey.isEmpty)
 try bindingBytes.write(to: bindingURL)
-_ = try AppBindingStore.updateHotKey(bundleID: "test.app", value: "ctrl+option+y", expectedValue: "ctrl+option+t", at: bindingURL, available: { _ in true })
+_ = try AppBindingStore.updateHotKey(bundleID: "test.app", path: "/Test.app", value: "ctrl+option+y", expectedValue: "ctrl+option+t", at: bindingURL, available: { _ in true })
 let autoSavedApp = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: bindingURL))
-verify(autoSavedApp.aliases["old"] == "/Test.app" && autoSavedApp.appHotKeys.first?.hotKey == "ctrl+option+y", "Autosaving a shortcut must not apply or clear aliases")
-_ = try AppBindingStore.updateHotKey(bundleID: "test.app", value: "", expectedValue: "ctrl+option+y", at: bindingURL, available: { _ in false })
+verify(autoSavedApp.aliases["old"] == "/Test.app" && autoSavedApp.appHotKeys.first?.hotKey == "ctrl+option+y" && autoSavedApp.appHotKeys.first?.path == "/Test.app", "Autosaving a shortcut must not apply or clear aliases")
+_ = try AppBindingStore.updateHotKey(bundleID: "test.app", path: "/Test.app", value: "", expectedValue: "ctrl+option+y", at: bindingURL, available: { _ in false })
 let removedApp = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: bindingURL))
 verify(removedApp.appHotKeys.isEmpty && removedApp.aliases["old"] == "/Test.app")
 print("PASS: immediate shortcut persistence and removal preserve aliases and disabled global keys")

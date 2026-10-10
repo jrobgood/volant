@@ -26,6 +26,35 @@ import VolantCore
         XCTAssertNil(DictionaryQuery.url(for: String(repeating: "x", count: 257)))
     }
 
+    func testCandidateRangesKeepPhrasesAndDropOnlySurroundingPunctuation() {
+        func pairs(_ ranges: [CFRange]) -> [[Int]] { ranges.map { [$0.location, $0.length] } }
+        var offsets: [CFIndex] = []
+        let detect: (CFRange) -> (CFIndex) -> CFRange = { range in { offsets.append($0); return range } }
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "zorbles", detect: detect(CFRange(location: 0, length: 7)))), [[0, 7]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "zorbles.", detect: detect(CFRange(location: 0, length: 7)))), [[0, 8], [0, 7]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "\u{201C}zorbles\u{201D}", detect: detect(CFRange(location: 1, length: 7)))), [[0, 9], [1, 7]])
+        XCTAssertEqual(offsets, [0, 0, 1])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "red zorblax", detect: detect(CFRange(location: 0, length: 3)))), [[0, 11]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "zorbles!", detect: detect(CFRange(location: kCFNotFound, length: 0)))), [[0, 8]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "😀 zorb", detect: detect(CFRange(location: 3, length: 4)))), [[0, 7], [3, 4]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "😀 zorb", detect: detect(CFRange(location: 1, length: 6)))), [[0, 7]])
+        XCTAssertEqual(pairs(DictionaryQuery.candidateRanges(in: "zorb", detect: detect(CFRange(location: 0, length: 9)))), [[0, 4]])
+        XCTAssertEqual(DictionaryQuery.candidateRanges(in: "", detect: detect(CFRange(location: 0, length: 0))).count, 0)
+    }
+
+    /// Exercises the real Dictionary Services range path. Skips when the host has no active English dictionary.
+    func testNativeLookupNormalizesInflectionsAndKeepsPhrases() async throws {
+        let lookup = NativeDictionaryLookup()
+        guard try await lookup.lookup("cat") != nil else { throw XCTSkip("No active English dictionary on this host") }
+        for term in ["cats", "geese", "went", "happier", "cats.", "\u{201C}geese\u{201D}", "New York"] {
+            let entry = try await lookup.lookup(term)
+            XCTAssertNotNil(entry, term)
+            XCTAssertEqual(entry?.term, term)
+        }
+        let phrase = try await lookup.lookup("red zorblaxian")
+        XCTAssertNil(phrase, "A phrase must not be reduced to its first word")
+    }
+
     func testCopyMissingFailureRetryAndClear() async throws {
         let model = DictionaryModel(); model.debounce = .zero
         model.lookup = { DictionaryEntry(term: $0, definition: "Fictional definition") }

@@ -19,16 +19,25 @@ final class AppIndex: NSObject {
     @Published private(set) var apps: [AppEntry] = []
     private let query = NSMetadataQuery()
     private let launchOverride: ((AppEntry) -> Void)?
-    init(entries: [AppEntry] = [], launch: ((AppEntry) -> Void)? = nil, startQuery: @escaping (NSMetadataQuery) -> Bool = { $0.start() }) {
+    private let bundleExists: (String) -> Bool
+    init(entries: [AppEntry] = [], launch: ((AppEntry) -> Void)? = nil, startQuery: @escaping (NSMetadataQuery) -> Bool = { $0.start() },
+         bundleExists: @escaping (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) {
         self.startQuery = startQuery
         self.apps = entries
         self.launchOverride = launch
+        self.bundleExists = bundleExists
         super.init()
     }
 
-    /// Imported aliases contain a path and must never fuzzy-match a different app.
+    /// Imported aliases contain a path and must never fuzzy-match a different app. A saved path deeper in an
+    /// application folder than the search index reaches still resolves to exactly that bundle while it exists.
     func resolveAlias(_ target: String) -> AppEntry? {
-        if target.hasPrefix("/") { return apps.first { $0.url.path == target } }
+        if target.hasPrefix("/") {
+            if let indexed = apps.first(where: { $0.url.path == target }) { return indexed }
+            guard Self.isApplicationBundle(target, maxDepth: nil), bundleExists(target) else { return nil }
+            let url = URL(fileURLWithPath: target)
+            return AppEntry(id: target, name: url.deletingPathExtension().lastPathComponent, url: url, lastUsed: nil)
+        }
         return search(target, limit: 1).first
     }
 
@@ -91,12 +100,20 @@ final class AppIndex: NSObject {
     static let systemApps: Set<String> = ["/System/Library/CoreServices/Finder.app"]
 
     /// An app the user would launch: directly inside one of the application folders (one level of subfolder allowed), not nested in another bundle.
+    /// Vendor suites nest uninstallers and helpers deeper, so fuzzy search stays at this depth.
     static func isUserFacingApp(_ path: String) -> Bool {
+        isApplicationBundle(path, maxDepth: 2)
+    }
+
+    /// An application bundle inside an application folder, at most `maxDepth` components below it when given,
+    /// and never inside another bundle.
+    static func isApplicationBundle(_ path: String, maxDepth: Int?) -> Bool {
         guard path.hasSuffix(".app"), !path.contains("/Contents/") else { return false }
         if systemApps.contains(path) { return true }
         for root in applicationRoots where path.hasPrefix(root) {
-            let rest = path.dropFirst(root.count)
-            return rest.split(separator: "/").count <= 2
+            let components = path.dropFirst(root.count).split(separator: "/")
+            guard !components.dropLast().contains(where: { $0.hasSuffix(".app") }) else { return false }
+            return maxDepth.map { components.count <= $0 } ?? true
         }
         return false
     }

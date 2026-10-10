@@ -226,3 +226,29 @@ Final publication: the signed build-10 feed was activated in Cloudflare Worker d
 - **Pages and downloads:** the homepage, `/docs`, and the 0.2.2 and 0.2.1 DMGs returned 200.
 - **Release PRs:** #167 through #172 passed required workflow checks before merging.
 - **Still unverified:** installed 0.2.1 → 0.2.2 Sparkle upgrades, and Intel hardware.
+
+## 0.2.3 build 11 — October 9, 2026
+
+**What's in it.** See the [release notes](releases/0.2.3.md).
+
+**Build.** Built from `450f1e9` on `release/0.2.3` by `Scripts/ship.sh`.
+
+- **Notarization:** Apple accepted app submission `0338caa3-8c56-4e92-89b5-7b54526f814a` and DMG submission `a214fbd4-0acb-4ab2-b237-1d59649bb93d`. Both were stapled and passed Gatekeeper as Notarized Developer ID.
+- **Mounted DMG:** `Volant.app` 0.2.3, build 11, `x86_64 arm64`, valid deep strict signature, stapled, Applications link present.
+- **DMG SHA-256:** `7d6e45cc58beeedad3dd2b442a8ec7312352fc20836182b499b797825977015d` (12463165 bytes).
+- **Feed:** the signed build-11 appcast generated with this DMG passes `sign_update --verify`.
+
+**Publishing.** After the owner merged this release, `Scripts/ship.sh` deployed the download while the previous feed stayed live, verified the public DMG, then deployed the feed and compared it byte for byte. Its results are posted on the release pull request.
+
+## 0.2.4 build 12 — October 9, 2026
+
+**What's in it.** See the [release notes](releases/0.2.4.md).
+
+**Build.** Built from `cd8c04e` on `release/0.2.4` by `Scripts/ship.sh`.
+
+- **Notarization:** Apple accepted app submission `36619658-f48c-4ba9-8f3f-9d249a73918f` and DMG submission `117bbf31-5dac-4c21-bcb4-602f18d8a365`. Both were stapled and passed Gatekeeper as Notarized Developer ID.
+- **Mounted DMG:** `Volant.app` 0.2.4, build 12, `x86_64 arm64`, valid deep strict signature, stapled, Applications link present.
+- **DMG SHA-256:** `5f7ec0eab6eb672242e67d8286c75b3c8e580ff42a23719a2fdb3f242cd52898` (12691634 bytes).
+- **Feed:** the signed build-12 appcast generated with this DMG passes `sign_update --verify`.
+
+**Publishing.** After the owner merged this release, `Scripts/ship.sh` deployed the download while the previous feed stayed live, verified the public DMG, then deployed the feed and compared it byte for byte. Its results are posted on the release pull request.

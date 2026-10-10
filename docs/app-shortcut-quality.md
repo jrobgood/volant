@@ -65,3 +65,28 @@ reader before publishing the sessions, then waits at most three seconds for both
 the loading state and the reader callback. Missing preview behavior still fails;
 the fixture no longer equates a busy runner with a missing preview. This is an
 automated fixture change, not a change to production Herdr or shortcut behavior.
+
+## Choosing between installed copies
+
+Each app shortcut now records the selected application's path alongside its
+bundle identifier. With two copies of one application installed (a release and a
+beta, or `/Applications` and `~/Applications`), the shortcut opens, focuses or
+hides only the copy chosen in Settings; a different copy that is running or
+frontmost is ignored. Two copies can hold separate shortcuts.
+
+Entries saved before this change have no path and keep resolving by bundle
+identifier until edited. They are not rewritten at launch, because filling in
+Launch Services' current choice would freeze the same ambiguity. Editing the
+shortcut or alias in Settings records the selected copy and keeps the entry's
+unknown fields. If the saved copy is gone or its path now holds a different
+application, the shortcut falls back to the bundle identifier and logs that the
+copy was unavailable. Raycast import records the exported application path.
+
+Application search still indexes at most one subfolder below an application
+folder, so vendor uninstallers and helpers nested deeper stay out of fuzzy
+results. A saved path alias to a deeper application bundle that still exists
+resolves directly instead of disappearing.
+
+Injected logic tests cover copy selection, legacy fallback, migration and stale
+edits. Global hotkey delivery to the intended copy in the installed app has not
+been verified.

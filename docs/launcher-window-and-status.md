@@ -10,6 +10,12 @@
   translation form retains the previous focus-loss protection. Global mouse and
   workspace-activation observers exist only while the launcher is visible,
   covering the nonactivating-panel case where the previous app remained active.
+- The launcher and notes panels share the floating level. Whichever panel was
+  presented last is explicitly ordered directly above the other, so notes opened
+  during a visible ACP conversation appears in front of it, and summoning the
+  launcher puts it back in front. Neither panel activates the app, and ordering
+  does not hide the other panel, end the conversation or change Escape: Escape
+  in notes closes only notes.
 - The top edge has a full-width native drag target and a small visible grip.
   The wing remains draggable. Existing edge/center guides provide nine placement
   combinations; Option bypasses snapping. Positions remain persistent and are

@@ -12,13 +12,19 @@ struct AppBindingRow: View {
     @State private var expectedAliases: [String: String]
     @State private var error: String?
     @State private var saved = false
+    @State private var icon: NSImage?
+    @ObservedObject private var icons: IconCache
     @FocusState private var editingAlias: Bool
     private var bundleID: String? { Bundle(url: app.url)?.bundleIdentifier }
     private var storedAliases: [String: String] { config.aliases.filter { $0.value == app.url.path || $0.value == app.name } }
-    private var hotKey: String { config.appHotKeys.first { $0.bundleIdentifier == bundleID }?.hotKey ?? "" }
+    private var hotKey: String { bundleID.map { AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: $0, path: app.url.path) } ?? "" }
 
-    init(app: AppEntry, config: Preferences, configURL: URL, onChange: @escaping () -> Void) {
+    /// Shows an icon already in the shared cache immediately; a missing one is fetched by the
+    /// row's task rather than during body evaluation.
+    init(app: AppEntry, config: Preferences, configURL: URL, icons: IconCache = .shared, onChange: @escaping () -> Void) {
         self.app = app; self.config = config; self.configURL = configURL; self.onChange = onChange
+        self.icons = icons
+        _icon = State(initialValue: icons.cachedIcon(forFile: app.url.path))
         let aliases = config.aliases.filter { $0.value == app.url.path || $0.value == app.name }
         let first = aliases.keys.sorted().first ?? ""
         _alias = State(initialValue: first); _originalAlias = State(initialValue: first)
@@ -28,7 +34,9 @@ struct AppBindingRow: View {
         VStack(alignment: .leading, spacing: 3) {
             HStack(alignment: .top, spacing: 10) {
                 HStack(spacing: 8) {
-                    Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path)).resizable().frame(width: 20, height: 20)
+                    Group {
+                        if let icon { Image(nsImage: icon).resizable() } else { Color.clear }
+                    }.frame(width: 20, height: 20)
                     Text(app.name).lineLimit(1).help(app.name)
                 }.frame(maxWidth: .infinity, alignment: .leading).frame(height: 26)
                 VStack(alignment: .leading, spacing: 3) {
@@ -44,7 +52,7 @@ struct AppBindingRow: View {
                 }.frame(width: 90)
                 ShortcutControl(title: app.name, value: hotKey) { replacement in
                     guard let bundleID else { throw BindingFailure(message: "This app has no bundle identifier.") }
-                    _ = try AppBindingStore.updateHotKey(bundleID: bundleID, value: replacement, expectedValue: hotKey,
+                    _ = try AppBindingStore.updateHotKey(bundleID: bundleID, path: app.url.path, value: replacement, expectedValue: hotKey,
                         at: configURL, available: { HotKeyCenter.shared.isAvailable($0) })
                     onChange()
                 }.frame(width: 160).disabled(bundleID == nil)
@@ -59,9 +67,15 @@ struct AppBindingRow: View {
             }
         }
         .padding(.vertical, 2)
+        .task(id: IconRequest(path: app.url.path, generation: icons.generation)) { icon = icons.icon(forFile: app.url.path) }
         .onChange(of: storedAliases) { _, latest in
             if alias == originalAlias { adopt(latest) }
         }
+    }
+    /// Identifies the icon a row shows, so a different app or a cleared cache fetches it again.
+    private struct IconRequest: Equatable {
+        let path: String
+        let generation: Int
     }
     private func adopt(_ aliases: [String: String]) {
         expectedAliases = aliases

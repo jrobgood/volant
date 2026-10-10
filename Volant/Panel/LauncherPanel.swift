@@ -18,6 +18,8 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
     private var outsideClickMonitor: Any?
     private var activationObserver: NSObjectProtocol?
     let snapGuides = LauncherSnapGuides()
+    /// The notes panel, when it exists; a fronted launcher is ordered above it.
+    weak var floatingPeer: NSWindow?
 
     init(index: AppIndex, clipboard: ClipboardStore, notes: NotesStore, config: Preferences, usage: UsageStore = UsageStore(), positionStore: UserDefaults = .standard, caffeinate: CaffeinateService = CaffeinateService(), preparesWhenHidden: Bool = true, files: FileSearch = FileSearch(), onNote: @escaping (LauncherAction) -> Void) {
         self.positionStore = positionStore
@@ -43,6 +45,12 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
     }
 
     override var canBecomeKey: Bool { true }
+
+    /// Fronts the launcher and explicitly orders it above a visible notes panel on the same level.
+    override func makeKeyAndOrderFront(_ sender: Any?) {
+        super.makeKeyAndOrderFront(sender)
+        orderAboveFloatingPeer(floatingPeer)
+    }
 
     /// Ordinary search is transient; conversations and unfinished input survive focus changes.
     var keepsVisibleOnBlur: Bool {

@@ -138,6 +138,8 @@ export default function Calculator() {
           ['100 Mbps in MB/s', '12.5 MB/s'],
           ['35 mpg in l/100km', '6.720417 L/100 km'],
           ['10 km / 48 min', '12.5 km/h'],
+          ['(3kg + 5lbs) * 2 in oz', '371.643772 oz'],
+          ['(1 mi + 1 km) / 8 min', '12.160284 mph'],
           ['1013.25 hPa in atm', '1 atm'],
           ['mach 1.5 in mph', 'about 1,142 mph, at sea level'],
           ['3.26 ly in pc', '0.999521 pc'],
@@ -190,7 +192,10 @@ export default function Calculator() {
         the answer names the one in effect. About 34,000 city names and 7,900
         airport codes work offline. When a city name or zone abbreviation is
         ambiguous, such as Springfield or IST, you get one card per likely
-        place instead of a guess.
+        place instead of a guess. A time that clocks skip on a
+        daylight-saving change explains the jump and converts the nearest
+        valid time, and a time that happens twice gives one card for each
+        reading, such as EDT and EST.
       </p>
 
       <h2>Dates and durations</h2>

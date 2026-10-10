@@ -46,9 +46,7 @@ final class ACPConnection {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: self.project)
-        process.environment = ["HOME": home, "USER": NSUserName(), "PATH": home + "/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"]
-        process.environment?["PATH"] = URL(fileURLWithPath: executable).deletingLastPathComponent().path + ":" + (process.environment?["PATH"] ?? "")
-        for (key, value) in providerEnvironment { process.environment?[key] = value }
+        process.environment = ChildProcessEnvironment.acpProvider(home: home, user: NSUserName(), executable: executable, launch: providerEnvironment)
         process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
         let generation = epoch
         process.terminationHandler = { [weak self] _ in

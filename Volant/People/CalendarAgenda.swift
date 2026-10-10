@@ -57,10 +57,11 @@ final class CalendarAgenda {
         return meetingHosts.contains { host == $0 || host.hasSuffix("." + $0) }
     }
 
-    static func open(_ entry: EventEntry) {
-        if let url = entry.joinURL { NSWorkspace.shared.open(url); return }
-        if let cal = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.iCal") {
-            NSWorkspace.shared.openApplication(at: cal, configuration: NSWorkspace.OpenConfiguration())
+    /// Opens a join link in its own handler, otherwise launches the user's calendar app rather than always Apple Calendar.
+    static func open(_ entry: EventEntry, workspace: HandlerWorkspace = NSWorkspace.shared) {
+        Task { @MainActor in
+            if let url = entry.joinURL { try? await DefaultHandler.open(url, workspace: workspace) }
+            else { try? await DefaultHandler.openCalendar(workspace: workspace) }
         }
     }
 

@@ -135,6 +135,34 @@ final class LauncherTypingTests: XCTestCase {
     }
 
     @MainActor
+    func testNoteBodyMatchesArriveForTheCurrentQueryAndKeepTheSelection() async throws {
+        let directory = root.appendingPathComponent("Notes")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let files = [("title.md", "# Fictional plan\nfirst line", 1_000.0), ("body.md", "# Errands\nfirst line\nthe plan for later", 2_000.0),
+                     ("other.md", "# Errands two\nfirst line\na zebra crossing", 3_000.0)]
+        for (name, text, date) in files {
+            let url = directory.appendingPathComponent(name)
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: date)], ofItemAtPath: url.path)
+        }
+        let store = NotesStore(directory: directory, searchReader: { url in
+            Thread.sleep(forTimeInterval: 0.05)
+            return try? String(contentsOf: url, encoding: .utf8)
+        })
+        let model = makeModel(notes: store)
+        model.searchesSecondarySources = false
+        model.query = "note zebra"
+        model.query = "note plan"
+        XCTAssertEqual(model.rows.map(\.id), ["note:title.md", "newnote:plan"], "Title matches show before any file is read")
+        model.selection = 1
+        for _ in 0..<100 where model.rows.count < 3 { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertEqual(model.rows.map(\.id), ["note:body.md", "note:title.md", "newnote:plan"])
+        XCTAssertEqual(model.selectedRow?.id, "newnote:plan", "A same-query update keeps the selected row")
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(model.rows.contains { $0.id == "note:other.md" }, "The abandoned query's matches never arrive")
+    }
+
+    @MainActor
     func testTypingEmojiSwitchesToTheGridAfterTheEdit() async throws {
         let model = makeModel()
         model.searchesSecondarySources = false

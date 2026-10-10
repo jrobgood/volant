@@ -48,14 +48,14 @@ struct AppBindingEditor: View {
             expected = bytes
             originalAlias = config.aliases.filter { $0.value == app.url.path || $0.value == app.name }.keys.sorted().first ?? ""
             alias = originalAlias
-            originalHotKey = config.appHotKeys.first { $0.bundleIdentifier == bundleID }?.hotKey ?? ""
+            originalHotKey = bundleID.map { AppHotKey.binding(in: config.appHotKeys, bundleIdentifier: $0, path: app.url.path) } ?? ""
             hotKey = originalHotKey
             error = bundleID == nil ? "This application has no bundle identifier and cannot receive a global shortcut." : nil
         } catch { self.error = error.localizedDescription; expected = nil }
     }
     private func saveShortcut(_ replacement: String) throws {
         guard let bundleID else { throw BindingFailure(message: "This application has no bundle identifier.") }
-        let updated = try AppBindingStore.updateHotKey(bundleID: bundleID, value: replacement, expectedValue: originalHotKey,
+        let updated = try AppBindingStore.updateHotKey(bundleID: bundleID, path: app.url.path, value: replacement, expectedValue: originalHotKey,
                                                        at: configURL, available: { HotKeyCenter.shared.isAvailable($0) })
         // A concurrent alias edit must still invalidate the alias draft after saving a shortcut.
         if let expected,
