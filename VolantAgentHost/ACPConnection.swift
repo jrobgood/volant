@@ -6,7 +6,9 @@ import VolantCore
 /// Only fixed provider executables are launched. No shell, terminal-input or generic RPC surface.
 final class ACPConnection {
     let queue = DispatchQueue(label: "com.mysticcoders.volant.acp")
-    private(set) var state = ACPState()
+    /// Every change to state, including in-place edits of a message, advances the revision.
+    private(set) var state = ACPState() { didSet { revision &+= 1 } }
+    private(set) var revision = 0
     private let writer = DispatchQueue(label: "com.mysticcoders.volant.acp-writer")
     private var task: Process?
     private var input: FileHandle?
@@ -70,6 +72,11 @@ final class ACPConnection {
             guard let self, self.epoch == generation, self.state.phase == "starting" else { return }
             self.stop("Agent startup timed out. Check its terminal login and reconnect.", failed: true)
         }
+    }
+    /// The encoded state and its revision. A reader that already holds the current revision gets
+    /// no data, so an unchanged conversation is neither encoded nor sent again.
+    func snapshot(after known: Int) throws -> (Data?, Int) {
+        known == revision ? (nil, revision) : (try JSONEncoder().encode(state), revision)
     }
     func beginHandshake(project: String, resume: String? = nil) {
         self.project = project

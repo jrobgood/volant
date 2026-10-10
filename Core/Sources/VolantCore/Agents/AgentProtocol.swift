@@ -8,7 +8,9 @@ import Foundation
     /// session ID. The reply reports only a refused ID or a failed launch; when the agent cannot
     /// load the conversation, it ends as failed in `acpRead` and no new conversation starts.
     func acpResume(provider: String, project: String, session: String, reply: @escaping (String?) -> Void)
-    func acpRead(reply: @escaping (Data?, String?) -> Void)
+    /// The conversation as JSON `ACPState` with its revision. When `after` is already the current
+    /// revision the reply carries no data: nothing changed. A negative `after` always gets the state.
+    func acpRead(after revision: Int, reply: @escaping (Data?, Int, String?) -> Void)
     func acpPrompt(text: String, reply: @escaping (String?) -> Void)
     /// A prompt with owner-chosen attachments, a JSON array of `ChatAttachment`.
     func acpPromptWithContext(text: String, attachments: Data, reply: @escaping (String?) -> Void)

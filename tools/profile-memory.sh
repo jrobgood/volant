@@ -14,19 +14,19 @@ cat > "$profile_bundle/Info.plist" <<'PLIST'
 PLIST
 profile_sources=()
 while IFS= read -r source; do profile_sources+=("$source"); done < <(rg --files Volant Shared -g '*.swift' | rg -v '^Volant/App/')
-swiftc -O -g -target "$(uname -m)-apple-macosx15.0" "${VOLANT_CORE_FLAGS[@]}" "${profile_sources[@]}" tools/memory/main.swift -o "$profile_bundle/MacOS/VolantMemoryProfile"
+swiftc -O -g -target "$(uname -m)-apple-macosx15.0" "${VOLANT_CORE_FLAGS[@]}" "${profile_sources[@]}" VolantAgentHost/ACPConnection.swift tools/memory/acp-poll.swift tools/memory/main.swift -o "$profile_bundle/MacOS/VolantMemoryProfile"
 # Ad-hoc signed measurement fixture, not a notarized/sandboxed release app.
 codesign --force --sign - "$profile_output/Volant Memory Profile.app"
 {
     git rev-parse HEAD
-    shasum -a 256 tools/memory/main.swift
+    shasum -a 256 tools/memory/main.swift tools/memory/acp-poll.swift
     sw_vers
     uname -m
     swiftc --version
     sysctl hw.memsize hw.model
 } > "$profile_output/environment.txt"
 # VOLANT_MEMORY_SCENARIOS narrows a focused rerun, such as "notes notes-small".
-read -r -a profile_scenarios <<< "${VOLANT_MEMORY_SCENARIOS:-idle emoji clipboard image-decode notes notes-small acp}"
+read -r -a profile_scenarios <<< "${VOLANT_MEMORY_SCENARIOS:-idle emoji clipboard image-decode notes notes-small acp acp-poll-small acp-poll-200k acp-poll-1m}"
 for repetition in 1 2 3; do
     for scenario in "${profile_scenarios[@]}"; do
         "$profile_bundle/MacOS/VolantMemoryProfile" "$scenario" > "$profile_output/$scenario-$repetition.csv"

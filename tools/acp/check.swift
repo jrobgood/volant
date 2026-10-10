@@ -184,3 +184,48 @@ rejectedLoad.queue.sync {
 }
 require(unsupported.state.resumeRejected == true, "an agent without loadSession stops offering resume")
 print("Passed: long replays keep their newest history, and refused loads clear the resume offer.")
+
+/// Reads skip the snapshot only while the reader holds the current revision; every visible change advances it.
+let polled = ACPConnection()
+polled.testSend = { _ in }
+try polled.queue.sync {
+    let decode: (Data?) -> ACPState? = { $0.flatMap { try? JSONDecoder().decode(ACPState.self, from: $0) } }
+    let peek: (Int) -> Data? = { try! polled.snapshot(after: $0).0 }
+    let (initial, start) = try polled.snapshot(after: -1)
+    require(decode(initial) == polled.state, "a reader without a revision gets the full state")
+    let (repeated, same) = try polled.snapshot(after: start)
+    require(repeated == nil && same == start, "an unchanged conversation sends no snapshot")
+    require(peek(start + 1) != nil, "any other revision gets the full state")
+    polled.beginHandshake(project: "/tmp/fictional-project")
+    polled.receive(frame(["jsonrpc": "2.0", "id": 1, "result": ["protocolVersion": 1, "agentCapabilities": [:]]]))
+    polled.receive(frame(["jsonrpc": "2.0", "id": 2, "result": ["sessionId": "polled-session"]]))
+    var known = start
+    let advances: (String) throws -> Void = { reason in
+        let (data, revision) = try polled.snapshot(after: known)
+        require(revision != known && decode(data) == polled.state, reason)
+        known = revision
+        require(peek(known) == nil, reason + " and then stays unchanged")
+    }
+    try advances("the handshake advances the revision")
+    try polled.prompt("Fictional question")
+    try advances("a prompt advances the revision")
+    let update: (String, String) -> [String: Any] = { session, text in ["jsonrpc": "2.0", "method": "session/update", "params": ["sessionId": session, "update": ["sessionUpdate": "agent_message_chunk", "content": ["type": "text", "text": text]]]] }
+    polled.receive(frame(update("polled-session", "Hello ")))
+    try advances("a new agent message advances the revision")
+    polled.receive(frame(update("polled-session", "world")))
+    try advances("text appended in place advances the revision")
+    require(decode(peek(-1))?.messages.last?.text == "Hello world", "the snapshot carries the appended text")
+    polled.receive(frame(update("other-session", "ignored")))
+    require(peek(known) == nil, "an update for another session changes nothing")
+    polled.receive(frame(["jsonrpc": "2.0", "id": 40, "method": "session/request_permission", "params": ["sessionId": "polled-session", "toolCall": ["toolCallId": "tool-1"], "options": [["optionId": "once", "name": "Allow once", "kind": "allow_once"]]]]))
+    try advances("a permission request advances the revision")
+    try polled.choose(request: polled.state.permissions[0].id, option: "once")
+    try advances("an answered permission advances the revision")
+    polled.cancel()
+    try advances("cancelling advances the revision")
+    polled.receive(frame(["jsonrpc": "2.0", "id": 3, "result": ["stopReason": "cancelled"]]))
+    try advances("the end of a turn advances the revision")
+    polled.stop()
+    try advances("stopping advances the revision")
+}
+print("Passed: revisions skip unchanged snapshots and advance on every change, including in-place text.")

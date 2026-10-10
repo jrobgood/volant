@@ -9,7 +9,11 @@ final class ACPModel: ObservableObject {
     @Published var draft = ""
     /// Owner-chosen context for the next prompt. Kept in memory with the draft, cleared once sent.
     @Published private(set) var attachments: [ChatAttachment] = []
-    @Published var state = ACPState()
+    /// Any change made here, rather than by a helper snapshot, forgets the helper's revision so
+    /// the next read replaces it with the helper's full state.
+    @Published var state = ACPState() { didSet { helperRevision = -1 } }
+    /// The ACP helper revision `state` was last decoded from; -1 when none is current.
+    private(set) var helperRevision = -1
     @Published var error: String?
     @Published var submitting = false
     /// The last ACP conversation, kept on this Mac only so it can be resumed by its own ID.
@@ -197,20 +201,34 @@ final class ACPModel: ObservableObject {
     private func read() {
         guard !reading, connection != nil else { return }
         reading = true
-        let current = generation, currentRevision = revision
-        let reply: (Data?, String?) -> Void = { [weak self] data, error in DispatchQueue.main.async {
+        let current = generation, currentRevision = revision, known = usesAPI ? -1 : helperRevision
+        let reply: (Data?, Int, String?) -> Void = { [weak self] data, snapshotRevision, error in DispatchQueue.main.async {
             guard let self, self.generation == current else { return }
             self.reading = false
             guard self.revision == currentRevision else { self.read(); return }
-            guard let data, let snapshot = try? JSONDecoder().decode(ACPState.self, from: data) else {
-                self.failed(error ?? "Invalid conversation state from helper.", current: current); return
+            switch self.receive(data, revision: snapshotRevision, after: known) {
+            case .unchanged: return
+            case .stale: self.read(); return
+            case .invalid: self.failed(error ?? "Invalid conversation state from helper.", current: current); return
+            case .applied: break
             }
-            if snapshot != self.state { self.state = snapshot }
-            self.remember(snapshot)
-            if snapshot.phase == "failed" || (self.usesAPI && snapshot.phase == "ready") { self.timer?.invalidate(); self.timer = nil }
+            if self.state.phase == "failed" || (self.usesAPI && self.state.phase == "ready") { self.timer?.invalidate(); self.timer = nil }
         } }
-        if usesAPI { apiProxy()?.read(reply: reply) }
-        else { proxy()?.acpRead(reply: reply) }
+        if usesAPI { apiProxy()?.read { reply($0, -1, $1) } }
+        else { proxy()?.acpRead(after: known, reply: reply) }
+    }
+    enum SnapshotResult { case applied, unchanged, stale, invalid }
+    /// Applies one helper reply to a read that asked for changes after `known`. A reply without
+    /// data confirms `known` is current, so nothing is decoded; if the app changed `state` while
+    /// that read was in flight, the reply is stale and the next read fetches the full state.
+    /// Otherwise the snapshot replaces `state` only when it differs, and its revision is kept.
+    func receive(_ data: Data?, revision: Int, after known: Int) -> SnapshotResult {
+        if data == nil, revision >= 0, revision == known { return helperRevision == known ? .unchanged : .stale }
+        guard let data, let snapshot = try? JSONDecoder().decode(ACPState.self, from: data) else { return .invalid }
+        if snapshot != state { state = snapshot }
+        helperRevision = revision
+        remember(snapshot)
+        return .applied
     }
     private func startAPI() {
         let current = generation

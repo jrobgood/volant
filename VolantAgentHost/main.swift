@@ -23,8 +23,11 @@ final class AgentHost: NSObject, VolantAgentHostProtocol {
     func acpResume(provider: String, project: String, session: String, reply: @escaping (String?) -> Void) {
         acp.queue.async { do { try self.acp.start(provider: provider, project: project, resume: session); reply(nil) } catch { reply(error.localizedDescription) } }
     }
-    func acpRead(reply: @escaping (Data?, String?) -> Void) {
-        acp.queue.async { do { reply(try JSONEncoder().encode(self.acp.state), nil) } catch { reply(nil, error.localizedDescription) } }
+    func acpRead(after revision: Int, reply: @escaping (Data?, Int, String?) -> Void) {
+        acp.queue.async {
+            do { let (data, current) = try self.acp.snapshot(after: revision); reply(data, current, nil) }
+            catch { reply(nil, -1, error.localizedDescription) }
+        }
     }
     func acpPrompt(text: String, reply: @escaping (String?) -> Void) {
         acp.queue.async { do { try self.acp.prompt(text); reply(nil) } catch { reply(error.localizedDescription) } }
