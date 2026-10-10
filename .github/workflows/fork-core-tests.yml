@@ -11,8 +11,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - run: swift test --package-path Core 2>&1 | tail -200
-        shell: bash -o pipefail {0}
+      - shell: bash {0}
+        run: |
+          swift test --package-path Core > /tmp/core.log 2>&1
+          status=$?
+          grep -E "error:|failed|Test Suite '.*(ACP|Worktree|Workspace).*' (passed|failed)|Executed [0-9]+ tests" /tmp/core.log | tail -150
+          if [ $status -ne 0 ]; then echo "---- last 100 lines ----"; tail -100 /tmp/core.log; fi
+          exit $status
   native-log:
     runs-on: macos-15
     timeout-minutes: 30
@@ -31,6 +36,6 @@ jobs:
         run: |
           Scripts/test.sh --ci --ui never > /tmp/native.log 2>&1
           status=$?
-          grep -E "error:|warning: .*(ACP|Conversation)|Passed|Test Suite '.*(ACP|Conversation).*' (passed|failed)|Executed [0-9]+ tests|\*\* TEST|failed" /tmp/native.log | tail -150
+          grep -E "error:|warning: .*(ACP|Conversation|Workspace|Worktree|Herdr)|Passed|Test Suite '.*(ACP|Conversation|Workspace|Worktree|Herdr).*' (passed|failed)|Executed [0-9]+ tests|\*\* TEST|failed" /tmp/native.log | tail -150
           if [ $status -ne 0 ]; then echo "---- last 200 lines ----"; tail -200 /tmp/native.log; fi
           exit $status
