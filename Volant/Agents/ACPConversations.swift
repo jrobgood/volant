@@ -75,6 +75,14 @@ final class ACPConversations: ObservableObject {
         return true
     }
 
+    /// Applies saved AI settings. The current conversation takes them through `configure` unless it
+    /// runs, and the next start of every ACP conversation follows the account now chosen for its
+    /// provider.
+    func apply(_ configuration: AIConfiguration) {
+        current.configure(configuration)
+        all.forEach { $0.followAccountChoice(configuration) }
+    }
+
     func select(_ model: ACPModel) {
         guard all.contains(where: { $0 === model }) else { return }
         current = model

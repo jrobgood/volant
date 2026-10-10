@@ -34,14 +34,22 @@ final class ACPConnection {
     private var holdsSlot = false
     // Fixture injection is only available to Swift tests, never over XPC.
     var testSend: (([String: Any]) -> Void)?
+    /// Where agents are looked up. Swift checks substitute fictional install locations; nothing
+    /// over XPC can change it.
+    var resolver = ACPAgentResolver.system
+    /// Receives each provider's environment just before it is launched. Swift checks only.
+    var testLaunch: (([String: String]) -> Void)?
 
     init(slots: ACPConversationSlots = .shared) {
         self.slots = slots
     }
 
-    func start(provider: String, project: String, resume: String? = nil) throws {
+    /// Starts `provider` in `project`, or resumes the conversation `resume` names. `profile` is the
+    /// conversation's account folder, or "" for the provider's default login.
+    func start(provider: String, project: String, resume: String? = nil, profile: String = "") throws {
         guard task == nil, state.phase == "disconnected" else { throw failure("End this conversation before starting another.") }
         if let resume, !ACPResumeRecord.isValidSessionID(resume) { throw failure("This conversation can’t be resumed. Start a new conversation.") }
+        let account = try Self.accountVariables(provider: provider, profile: profile)
         try takeSlot()
         // Every exit below that launches no agent returns the slot.
         var launched = false
@@ -49,7 +57,7 @@ final class ACPConnection {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         guard let selected = ACPProvider(rawValue: provider) else { throw failure("Unknown ACP provider.") }
         let launch: ACPLaunch
-        do { launch = try ACPAgentResolver.system.launch(selected) }
+        do { launch = try resolver.launch(selected) }
         catch { throw failure(error.localizedDescription) }
         let executable = launch.executable, arguments = launch.arguments, providerEnvironment = launch.environment
         let chatDirectory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/Volant/Chat", isDirectory: true)
@@ -60,7 +68,9 @@ final class ACPConnection {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
         process.currentDirectoryURL = URL(fileURLWithPath: self.project)
-        process.environment = ChildProcessEnvironment.acpProvider(home: home, user: NSUserName(), executable: executable, launch: providerEnvironment)
+        let environment = ChildProcessEnvironment.acpProvider(home: home, user: NSUserName(), executable: executable,
+                                                              launch: providerEnvironment.merging(account) { $1 })
+        process.environment = environment
         process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
         let generation = epoch
         process.terminationHandler = { [weak self] _ in
@@ -69,6 +79,7 @@ final class ACPConnection {
                 self.stop("Agent process exited. Check the provider’s terminal login and reconnect.", failed: true)
             }
         }
+        testLaunch?(environment)
         try process.run()
         launched = true
         task = process; input = stdin.fileHandleForWriting; output = stdout.fileHandleForReading
@@ -90,6 +101,22 @@ final class ACPConnection {
     /// no data, so an unchanged conversation is neither encoded nor sent again.
     func snapshot(after known: Int) throws -> (Data?, Int) {
         known == revision ? (nil, revision) : (try JSONEncoder().encode(state), revision)
+    }
+    /// The launch variable for a conversation under the account folder `profile`; none for the
+    /// default login (""). The Core rules run first, so a partial path never reaches the file
+    /// system. Then only whether the folder exists is checked: nothing in it is read, copied or
+    /// moved. Called before a slot is taken, so a refused folder starts nothing.
+    static func accountVariables(provider: String, profile: String) throws -> [String: String] {
+        guard !profile.isEmpty else { return [:] }
+        guard let selected = ACPProvider(rawValue: provider) else { throw failure("Unknown ACP provider.") }
+        let variables: [String: String]
+        do { variables = try ACPAccountProfile.launchVariables(provider: selected, directory: profile) }
+        catch { throw failure(error.localizedDescription) }
+        var directory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: profile, isDirectory: &directory), directory.boolValue else {
+            throw failure("Could not open this conversation’s account folder. Check the Account section in AI Settings.")
+        }
+        return variables
     }
     /// Takes one of the helper's conversation slots before anything is resolved or launched. Internal
     /// so `tools/acp/check.swift` can hold a slot without an installed agent; never exposed over XPC.
@@ -320,5 +347,6 @@ final class ACPConnection {
             replayTrimmed = true
         }
     }
-    private func failure(_ message: String) -> NSError { NSError(domain: "VolantACP", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
+    private func failure(_ message: String) -> NSError { Self.failure(message) }
+    private static func failure(_ message: String) -> NSError { NSError(domain: "VolantACP", code: 1, userInfo: [NSLocalizedDescriptionKey: message]) }
 }

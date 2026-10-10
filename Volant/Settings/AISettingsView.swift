@@ -9,6 +9,8 @@ struct AISettingsView: View {
     let onChange: () -> Void
     let openConversation: (AIConfiguration) -> Void
     let chooseProject: (@escaping (URL?) -> Void) -> Void
+    /// Opens a folder chooser for a new account folder.
+    var chooseAccountFolder: (@escaping (URL?) -> Void) -> Void = { _ in }
     var credentials = AICredentials.keychain
     @StateObject var discovery = AIModelDiscovery()
     @StateObject var agentDetection = ACPAgentDetection()
@@ -30,7 +32,7 @@ struct AISettingsView: View {
                         if kind == .acp { agentDetection.detect() } else { agentDetection.cancel() }
                     }
             }
-            if config.connection == .acp { detectedAgents; acpControls }
+            if config.connection == .acp { detectedAgents; acpControls; accountControls }
             else if config.connection == .apple { appleControls }
             else { apiControls }
             Section {
@@ -150,8 +152,20 @@ struct AISettingsView: View {
         } header: {
             Text("ACP")
         } footer: {
-            SettingsFooter("Uses your agent’s existing CLI login; sign in with that provider first. A working folder is optional and is not a sandbox: your agent’s permissions still control tool access.")
+            SettingsFooter(acpFooter)
         }
+    }
+    /// Claude Code and Codex can run under an account folder; the other providers have no setting.
+    @ViewBuilder private var accountControls: some View {
+        if let provider = ACPProvider(rawValue: config.provider), ACPAccountProfile.environmentKey(for: provider) != nil {
+            ACPAccountsSection(config: $config, provider: provider, enabled: loaded, chooseFolder: chooseAccountFolder,
+                               save: { _ = persist() }, refuse: { report($0, failure: true) })
+        }
+    }
+    private var acpFooter: String {
+        let accounts = ACPProvider(rawValue: config.provider).flatMap(ACPAccountProfile.environmentKey(for:)) != nil
+        return (accounts ? "Uses your agent’s existing CLI login, or the account chosen below;" : "Uses your agent’s existing CLI login;")
+            + " sign in with that provider first. A working folder is optional and is not a sandbox: your agent’s permissions still control tool access."
     }
     private var httpBinding: Binding<AIHTTPConfiguration> {
         Binding(get: { config.http }, set: { if config.connection == .local { config.localAPI = $0 } else { config.api = $0 } })

@@ -6,6 +6,18 @@ import VolantCore
 final class ACPModel: ObservableObject {
     @Published var provider = "opencode"
     @Published var project = ""
+    /// The account this conversation runs under, or ran under once it has ended; nil for the
+    /// provider's default login. Each start sets it, so a transcript keeps the account that produced
+    /// it when the choice changes later. Before the first start it shows the account that start will
+    /// use. Settings that show an ended conversation under another provider or connection show the
+    /// account chosen for that one, and back under the provider and connection it ran under it shows
+    /// the account it ran under, so the provider shown and the account beside it belong together.
+    @Published private(set) var account: ACPAccountProfile?
+    /// The account the next start uses: the choice for this conversation's provider in the settings
+    /// last applied.
+    private var nextAccount: ACPAccountProfile?
+    /// The provider, connection and account of the last start; nil before the first.
+    private var ranUnder: (provider: String, connection: AIConnectionKind, account: ACPAccountProfile?)?
     @Published var draft = ""
     /// Owner-chosen context for the next prompt. Kept in memory with the draft, cleared once sent.
     @Published private(set) var attachments: [ChatAttachment] = []
@@ -50,6 +62,23 @@ final class ACPModel: ObservableObject {
         guard !active else { return }
         configuration = value
         provider = value.provider; project = value.connection == .acp ? value.project : ""
+        nextAccount = value.connection == .acp ? value.account(for: value.provider) : nil
+        showAccount()
+    }
+    /// Points the next start at the account now chosen for this conversation's provider, whether it
+    /// runs or has ended, so after a changed choice or a removed account no later start or Resume
+    /// uses the earlier account. A running conversation keeps its launch and the account it shows,
+    /// and its provider and folder stay.
+    func followAccountChoice(_ value: AIConfiguration) {
+        guard configuration.connection == .acp else { return }
+        nextAccount = value.account(for: provider)
+        if !active { showAccount() }
+    }
+    /// Shows the account of the last start while the conversation shows that start's provider and
+    /// connection, else the account its next start uses.
+    private func showAccount() {
+        if let ranUnder, ranUnder.provider == provider, ranUnder.connection == configuration.connection { account = ranUnder.account }
+        else { account = nextAccount }
     }
     /// Reopening an active chat must never replace its session or draft. A conversation that can be
     /// resumed is offered instead of connecting, so opening the chat never replaces its record.
@@ -102,12 +131,26 @@ final class ACPModel: ObservableObject {
         return line.count > 24 ? String(line.prefix(23)) + "…" : String(line)
     }
     var active: Bool { !["failed", "disconnected"].contains(state.phase) }
-    /// Resume is offered only for the provider and project currently chosen, so it can never
-    /// reopen a conversation in a folder the owner has since moved away from.
+    /// Resume is offered only for the provider, project and account currently chosen, so it can never
+    /// reopen a conversation in a folder the owner has since moved away from or under another login.
     var canResume: Bool {
-        guard !active, !usesAPI, !usesApple, let record = resumable, record.matches(provider: provider, project: project) else { return false }
+        guard !active, !usesAPI, !usesApple, let record = resumable, record.matches(provider: provider, project: project, profile: profile) else { return false }
         return !sessionsElsewhere().contains(record.sessionID)
     }
+    /// The account folder the next start sends to the helper, or "" for the default login.
+    var profile: String { nextAccount?.directory ?? "" }
+    /// What `connect` asks the helper for. A resume runs under the account the conversation ran
+    /// under, since a provider keeps its sessions with the login that started them.
+    enum HelperStart: Equatable {
+        case start(project: String, profile: String)
+        case resume(folder: String, profile: String, session: String)
+    }
+    func helperStart(resume record: ACPResumeRecord?) -> HelperStart {
+        if let record { return .resume(folder: project, profile: record.profile ?? "", session: record.sessionID) }
+        return .start(project: project, profile: profile)
+    }
+    /// Replaced in tests: receives what the helper would be asked for, and no connection opens.
+    var connector: ((HelperStart) -> Void)?
     var canSend: Bool { state.phase == "ready" && !submitting && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     func start() {
@@ -118,15 +161,18 @@ final class ACPModel: ObservableObject {
     func resume() {
         guard canResume, let record = resumable else { return }
         resumedSession = record.sessionID
-        connect(resume: record.sessionID)
+        connect(resume: record)
     }
 
-    private func connect(resume session: String?) {
+    private func connect(resume record: ACPResumeRecord?) {
         disconnect()
+        // A resume asks for the record's account folder, which `canResume` matched to this one.
+        account = nextAccount; ranUnder = (provider, configuration.connection, account)
         if usesApple { startApple(); return }
         if usesAPI { startAPI(); return }
-        let current = generation
-        state = ACPState(); state.phase = "starting"; state.status = session == nil ? "Connecting…" : "Restoring conversation…"; error = nil
+        let current = generation, request = helperStart(resume: record)
+        state = ACPState(); state.phase = "starting"; state.status = record == nil ? "Connecting…" : "Restoring conversation…"; error = nil
+        if let connector { connector(request); return }
         let connection = NSXPCConnection(serviceName: "com.mysticcoders.volant.AgentHost")
         connection.remoteObjectInterface = NSXPCInterface(with: VolantAgentHostProtocol.self)
         connection.invalidationHandler = { [weak self] in DispatchQueue.main.async { self?.failed("Agent helper disconnected. Start a new conversation to reconnect.", current: current) } }
@@ -140,8 +186,11 @@ final class ACPModel: ObservableObject {
                 self.schedulePolling()
             }
         }
-        if let session { proxy()?.acpResume(provider: provider, project: project, session: session, reply: started) }
-        else { proxy()?.acpStart(provider: provider, project: project, reply: started) }
+        switch request {
+        case .start(let folder, let profile): proxy()?.acpStart(provider: provider, project: folder, profile: profile, reply: started)
+        case .resume(let folder, let profile, let session):
+            proxy()?.acpResume(provider: provider, project: folder, profile: profile, session: session, reply: started)
+        }
     }
     /// Records a conversation once it is ready and holds an owner turn, so a session opened and left
     /// unused never replaces the record. A launch failure keeps the record, since the cause may be an
@@ -158,8 +207,8 @@ final class ACPModel: ObservableObject {
         }
         guard !usesAPI, !usesApple, snapshot.phase == "ready", let session = snapshot.sessionID,
               snapshot.messages.contains(where: { $0.role == "You" }) else { return }
-        let record = ACPResumeRecord(provider: provider, project: project, sessionID: session)
-        guard record.isValid, resumable?.sessionID != session || resumable?.matches(provider: provider, project: project) != true,
+        let record = ACPResumeRecord(provider: provider, project: project, sessionID: session, profile: account?.directory)
+        guard record.isValid, resumable?.sessionID != session || resumable?.matches(provider: provider, project: project, profile: record.profile ?? "") != true,
               let data = try? JSONEncoder().encode(record) else { return }
         resumeStore.set(data, forKey: Self.resumeKey)
         resumable = record
@@ -253,16 +302,25 @@ final class ACPModel: ObservableObject {
             guard let self, self.generation == current else { return }
             self.reading = false
             guard self.revision == currentRevision else { self.read(); return }
-            switch self.receive(data, revision: snapshotRevision, after: known) {
-            case .unchanged: return
-            case .stale: self.read(); return
-            case .invalid: self.failed(error ?? "Invalid conversation state from helper.", current: current); return
-            case .applied: break
-            }
-            if self.state.phase == "failed" || (self.usesAPI && self.state.phase == "ready") { self.timer?.invalidate(); self.timer = nil }
+            self.handleRead(data, revision: snapshotRevision, after: known, error: error)
         } }
         if usesAPI { apiProxy()?.read { reply($0, -1, $1) } }
         else { proxy()?.acpRead(after: known, reply: reply) }
+    }
+    /// What `read` does with each reply: applies it through `receive(_:revision:after:)`, reads
+    /// again after a stale reply, fails on an invalid one, and stops polling once a snapshot shows
+    /// a failed conversation or a finished API turn. Internal so tests can drive a conversation
+    /// with the replies a helper would send.
+    @discardableResult func handleRead(_ data: Data?, revision snapshotRevision: Int, after known: Int, error: String? = nil) -> SnapshotResult {
+        let result = receive(data, revision: snapshotRevision, after: known)
+        switch result {
+        case .unchanged: break
+        case .stale: read()
+        case .invalid: failed(error ?? "Invalid conversation state from helper.", current: generation)
+        case .applied:
+            if state.phase == "failed" || (usesAPI && state.phase == "ready") { timer?.invalidate(); timer = nil }
+        }
+        return result
     }
     enum SnapshotResult { case applied, unchanged, stale, invalid }
     /// Applies one helper reply to a read that asked for changes after `known`. A reply without

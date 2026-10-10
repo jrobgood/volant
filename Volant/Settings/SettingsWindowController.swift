@@ -39,6 +39,7 @@ final class SettingsWindowController: NSWindowController {
         let hosting = NSHostingView(rootView: ThemedRoot(paletteText: false) {
             SettingsView(state: state, conversations: conversations, dictationAccess: dictationAccess, configURL: configURL, onChange: onChange, openAI: openAI,
                          chooseAIProject: { [weak self] completion in self?.chooseAIProject(completion) },
+                         chooseAccountFolder: { [weak self] completion in self?.chooseAccountFolder(completion) },
                          importRaycast: { [weak self] in self?.showRaycastImport() })
                 .frame(minWidth: 680, idealWidth: 760, maxWidth: .infinity, minHeight: 500, idealHeight: 540, maxHeight: .infinity)
         })
@@ -64,6 +65,17 @@ final class SettingsWindowController: NSWindowController {
         picker.prompt = "Use Project"
         picker.beginSheetModal(for: window) { result in completion(result == .OK ? picker.url : nil) }
     }
+    /// The providers' own folders, ~/.claude and ~/.codex, are hidden, so hidden files are shown.
+    /// Volant keeps only the chosen path; the agent helper passes it to the provider.
+    private func chooseAccountFolder(_ completion: @escaping (URL?) -> Void) {
+        guard let window, window.attachedSheet == nil else { return }
+        let picker = NSOpenPanel()
+        picker.canChooseDirectories = true; picker.canChooseFiles = false; picker.allowsMultipleSelection = false
+        picker.showsHiddenFiles = true
+        picker.prompt = "Use Folder"
+        picker.message = "Choose the folder this account signs in with."
+        picker.beginSheetModal(for: window) { result in completion(result == .OK ? picker.url : nil) }
+    }
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
     func refresh(_ config: Preferences, apps: [AppEntry]? = nil, errors: [String]? = nil) {
         state.config = config
@@ -82,6 +94,7 @@ private struct SettingsView: View {
     let onChange: () -> Void
     let openAI: (AIConfiguration) -> Void
     let chooseAIProject: (@escaping (URL?) -> Void) -> Void
+    let chooseAccountFolder: (@escaping (URL?) -> Void) -> Void
     let importRaycast: () -> Void
     @State private var search = ""
     @State private var error: String?
@@ -104,7 +117,8 @@ private struct SettingsView: View {
                 if state.section == "General" { general }
                 else if state.section == "Appearance" { AppearanceSettingsView(appearance: state.config.appearance, configURL: configURL, onChange: onChange) }
                 else if state.section == "Status Bar" { statusBar }
-                else if state.section == "AI" { AISettingsView(conversations: conversations, configURL: configURL, onChange: onChange, openConversation: openAI, chooseProject: chooseAIProject) }
+                else if state.section == "AI" { AISettingsView(conversations: conversations, configURL: configURL, onChange: onChange, openConversation: openAI, chooseProject: chooseAIProject,
+                                                                       chooseAccountFolder: chooseAccountFolder) }
                 else if state.section == "Extensions" { ExtensionSettingsView(configURL: configURL, onChange: onChange) }
                 else if state.section == "App Shortcuts" { shortcuts }
                 else { data }

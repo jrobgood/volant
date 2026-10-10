@@ -736,6 +736,65 @@ severalSettingsWindow.orderOut(nil)
 for model in several.all { model.state.phase = "disconnected" }
 UserDefaults().removePersistentDomain(forName: severalSuite)
 print("PASS: several ACP conversations render their buttons and one launcher row without a helper connection")
+// Accounts. The profiles name fictional folders and no helper connection opens, so no folder is
+// read and no provider starts.
+let accountsSuite = "volant.actions.fixture.acp-accounts"
+UserDefaults().removePersistentDomain(forName: accountsSuite)
+var accountsConfig = AIConfiguration(); accountsConfig.provider = "claude"
+try accountsConfig.addProfile(ACPAccountProfile(provider: "claude", label: "Work", directory: "/tmp/fictional-claude-work"))
+try accountsConfig.addProfile(ACPAccountProfile(provider: "claude", label: "Personal", directory: "/tmp/fictional-claude-personal"))
+try accountsConfig.addProfile(ACPAccountProfile(provider: "codex", label: "Work", directory: "/tmp/fictional-codex-work"))
+accountsConfig.chooseAccount(accountsConfig.profiles(for: "claude").first?.id, for: "claude")
+try accountsConfig.save(at: aiFixtureURL)
+let accountsList = ACPConversations(make: { ACPModel(resumeStore: UserDefaults(suiteName: accountsSuite)!) },
+                                    start: { model in model.state.phase = "ready"; model.state.status = "Ready" })
+var accountFoldersChosen = 0
+let accountsDetection = ACPAgentDetection()
+accountsDetection.reader = { reply in
+    reply(try? JSONEncoder().encode([ACPAgentAvailability(provider: "claude", state: .ready, detail: "Found at ~/.local/bin/claude", path: "/Users/fixture/.local/bin/claude")]), nil)
+}
+let accountsSettings = NSHostingView(rootView: AISettingsView(conversations: accountsList, configURL: aiFixtureURL, onChange: {}, openConversation: { _ in }, chooseProject: { _ in },
+                                                              chooseAccountFolder: { _ in accountFoldersChosen += 1 },
+                                                              credentials: fakeCredentials, discovery: AIModelDiscovery(), agentDetection: accountsDetection)
+    .background(Color(nsColor: .windowBackgroundColor)))
+let accountsSettingsWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 900), styleMask: [.titled], backing: .buffered, defer: false)
+accountsSettingsWindow.contentView = accountsSettings; accountsSettingsWindow.makeKeyAndOrderFront(nil); settle()
+verify(controlFrame("settings.add-account", in: accountsSettingsWindow) != nil && accountFoldersChosen == 0 && !accountsList.current.active,
+       "AI Settings lists the Claude Code accounts without choosing a folder or connecting")
+try render("ai-acp-accounts-settings", view: accountsSettings)
+accountsSettingsWindow.orderOut(nil)
+// Three conversations: Claude Code under Work, Codex under its default login, and Claude Code under
+// Personal.
+verify(accountsList.newConversation(configuration: accountsConfig), "A conversation starts under Work")
+let accountsWork = accountsList.current
+accountsWork.state.messages = [ACPMessage(role: "You", text: "Summarize the fictional release notes."),
+                               ACPMessage(role: "Agent", text: "The fictional release adds **two** settings.")]
+var accountsCodex = accountsConfig; accountsCodex.provider = "codex"
+verify(accountsList.newConversation(configuration: accountsCodex), "A Codex conversation starts under its default login")
+var accountsPersonal = accountsConfig; accountsPersonal.chooseAccount(accountsConfig.profiles(for: "claude").last?.id, for: "claude")
+verify(accountsList.newConversation(configuration: accountsPersonal), "A conversation starts under Personal")
+let accountsShown = accountsList.current
+accountsShown.state.messages = [ACPMessage(role: "You", text: "List the open risks in the fictional release notes.")]
+let accountsDefault = accountsList.all.filter { $0.account == nil }.map(\.provider)
+verify(accountsWork.account?.label == "Work" && accountsShown.account?.label == "Personal" && accountsDefault == ["codex"],
+       "Each conversation keeps the account it started with")
+let accountsChat = NSHostingView(rootView: ACPConversationView(model: accountsShown, conversations: accountsList)
+    .background(Color(nsColor: .windowBackgroundColor)))
+let accountsChatWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 450), styleMask: [.titled], backing: .buffered, defer: false)
+accountsChatWindow.contentView = accountsChat; accountsChatWindow.makeKeyAndOrderFront(nil); settle()
+try render("ai-acp-accounts", view: accountsChat)
+accountsChatWindow.orderOut(nil)
+let accountsStrip = NSHostingView(rootView: VStack(spacing: 0) {
+    ACPActivityStrip(conversations: accountsList) { _ in }
+    Spacer(minLength: 0)
+}.background(Color(nsColor: .windowBackgroundColor)))
+let accountsStripWindow = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 740, height: 60), styleMask: [.titled], backing: .buffered, defer: false)
+accountsStripWindow.contentView = accountsStrip; accountsStripWindow.makeKeyAndOrderFront(nil); settle()
+try render("ai-acp-accounts-strip", view: accountsStrip)
+accountsStripWindow.orderOut(nil)
+for model in accountsList.all { model.state.phase = "disconnected" }
+UserDefaults().removePersistentDomain(forName: accountsSuite)
+print("PASS: accounts render in AI Settings, the chat header, the conversation buttons and the launcher row without a helper connection")
 
 // Clipboard failures never access the owner's Keychain or pasteboard.
 clipboard.record("Fictional clipboard recovery fixture")

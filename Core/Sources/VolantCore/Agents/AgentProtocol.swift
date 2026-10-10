@@ -3,11 +3,16 @@ import Foundation
 @objc public protocol VolantAgentHostProtocol {
     func listAppleShortcuts(reply: @escaping (Data?, String?) -> Void)
     func runAppleShortcut(id: String, reply: @escaping (String?) -> Void)
-    func acpStart(provider: String, project: String, reply: @escaping (String?) -> Void)
-    /// Starts the provider and loads a conversation it created earlier, by its recorded native
-    /// session ID. The reply reports only a refused ID or a failed launch; when the agent cannot
-    /// load the conversation, it ends as failed in `acpRead` and no new conversation starts.
-    func acpResume(provider: String, project: String, session: String, reply: @escaping (String?) -> Void)
+    /// Starts the provider in `project`. `profile` is an account folder, passed to the provider as
+    /// its one account variable (`ACPAccountProfile.launchVariables`), or "" for its default login.
+    /// The helper checks only that the folder exists and reads nothing in it. A refused folder
+    /// starts nothing.
+    func acpStart(provider: String, project: String, profile: String, reply: @escaping (String?) -> Void)
+    /// Starts the provider under `profile`, as `acpStart` does, and loads a conversation it created
+    /// earlier, by its recorded native session ID. The reply reports only a refused ID, a refused
+    /// account folder or a failed launch; when the agent cannot load the conversation, it ends as
+    /// failed in `acpRead` and no new conversation starts.
+    func acpResume(provider: String, project: String, profile: String, session: String, reply: @escaping (String?) -> Void)
     /// The conversation as JSON `ACPState` with its revision. When `after` is already the current
     /// revision the reply carries no data: nothing changed. A negative `after` always gets the state.
     func acpRead(after revision: Int, reply: @escaping (Data?, Int, String?) -> Void)

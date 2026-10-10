@@ -259,3 +259,55 @@ require(one.inUse == 0, "stopping returns the slot")
 holder.queue.sync { holder.stop("Agent process exited.", failed: true) }
 require(one.inUse == 0, "a second stop returns nothing more")
 print("Passed: the helper refuses a conversation past its limit before launching anything, and every stop or failed start returns its slot.")
+
+// A conversation under an account gets one variable naming its folder, and the helper checks only
+// that the folder exists. A refused folder is refused before a slot is taken.
+// The fictional install location holds no executable, so each launch fails after its environment
+// is captured.
+let accountRoot = FileManager.default.temporaryDirectory.appendingPathComponent("volant-account-check-" + UUID().uuidString)
+let accountFolder = accountRoot.appendingPathComponent("fictional-claude-work").path
+let accountProject = accountRoot.appendingPathComponent("fictional-project").path
+try FileManager.default.createDirectory(atPath: accountFolder, withIntermediateDirectories: true)
+try FileManager.default.createDirectory(atPath: accountProject, withIntermediateDirectories: true)
+try Data("fictional".utf8).write(to: URL(fileURLWithPath: accountFolder + "/fictional-login.json"))
+let accountAgents = ACPAgentResolver(home: "/fictional-home",
+                                     isExecutable: { ["claude", "codex", "node", "qwen"].map { "/fictional-home/.local/bin/" + $0 }.contains($0) },
+                                     exists: { $0.hasPrefix("/fictional-home/.local/share/volant/acp/") }, contents: { _ in [] })
+func launchEnvironment(_ provider: String, profile: String, resume: String? = nil, slots: ACPConversationSlots = ACPConversationSlots(limit: 1)) -> (environment: [String: String]?, error: String) {
+    let connection = ACPConnection(slots: slots)
+    connection.resolver = accountAgents
+    var captured: [String: String]?
+    connection.testLaunch = { captured = $0 }
+    do {
+        try connection.queue.sync { try connection.start(provider: provider, project: accountProject, resume: resume, profile: profile) }
+        fatalError("a fictional agent launched")
+    } catch {
+        require(slots.inUse == 0, "a start that launches nothing returns its slot: " + provider)
+        return (captured, error.localizedDescription)
+    }
+}
+let claudeAccount = launchEnvironment("claude", profile: accountFolder)
+require(claudeAccount.environment?["CLAUDE_CONFIG_DIR"] == accountFolder, "Claude Code gets its account folder")
+require(claudeAccount.environment?["CLAUDE_CODE_EXECUTABLE"] == "/fictional-home/.local/bin/claude", "beside its own launch variable")
+require(claudeAccount.environment.map { Set($0.keys) } == ["HOME", "USER", "PATH", "LANG", "CLAUDE_CODE_EXECUTABLE", "CLAUDE_CONFIG_DIR"], "and nothing else")
+let codexAccount = launchEnvironment("codex", profile: accountFolder)
+require(codexAccount.environment?["CODEX_HOME"] == accountFolder, "Codex gets CODEX_HOME")
+require(codexAccount.environment.map { Set($0.keys) } == ["HOME", "USER", "PATH", "LANG", "CODEX_PATH", "CODEX_HOME"], "and nothing else")
+let resumedAccount = launchEnvironment("claude", profile: accountFolder, resume: "fictional-session")
+require(resumedAccount.environment?["CLAUDE_CONFIG_DIR"] == accountFolder, "a resume runs under its account")
+let defaultLogin = launchEnvironment("claude", profile: "")
+require(defaultLogin.environment.map { Set($0.keys) } == ["HOME", "USER", "PATH", "LANG", "CLAUDE_CODE_EXECUTABLE"], "the default login adds no variable")
+let refusals: [(provider: String, profile: String, message: String)] = [
+    ("qwen", accountFolder, "Only Claude Code and Codex can use an account folder."),
+    ("claude", "fictional-claude-work", "An account folder must be a full path."),
+    ("codex", accountFolder + "/missing", "Could not open this conversation’s account folder. Check the Account section in AI Settings."),
+    ("claude", accountFolder + "/fictional-login.json", "Could not open this conversation’s account folder. Check the Account section in AI Settings.")
+]
+for refusal in refusals {
+    let noSlots = ACPConversationSlots(limit: 0)
+    let refused = launchEnvironment(refusal.provider, profile: refusal.profile, slots: noSlots)
+    require(refused.environment == nil && refused.error == refusal.message, "refused before a slot or a launch, saw: " + refused.error)
+}
+require((try? FileManager.default.contentsOfDirectory(atPath: accountFolder)) == ["fictional-login.json"], "nothing is added to or moved out of the folder")
+try? FileManager.default.removeItem(at: accountRoot)
+print("Passed: a conversation under an account gets CLAUDE_CONFIG_DIR or CODEX_HOME and nothing else, the default login adds no variable, and a refused folder takes no slot.")

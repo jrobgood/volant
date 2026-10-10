@@ -29,6 +29,7 @@ struct ACPConversationView: View {
                 if let caffeinate { CaffeinateStatusView(service: caffeinate) }
                 Text("AI Chat").fontWeight(.medium)
                 Text(model.providerTitle).foregroundStyle(.secondary).lineLimit(1).help(model.providerTitle)
+                if let account = model.account { ACPAccountLabel(label: account.label).help(account.directory) }
                 if !model.project.isEmpty {
                     Label((model.project as NSString).lastPathComponent, systemImage: "folder")
                         .foregroundStyle(.secondary).lineLimit(1).help(model.project)
@@ -40,7 +41,7 @@ struct ACPConversationView: View {
                     Button("End", action: model.disconnect)
                 }
                 else {
-                    if model.canResume { Button("Resume", action: model.resume).help("Continue your last conversation with this provider and folder") }
+                    if model.canResume { Button("Resume", action: model.resume).help("Continue your last conversation with this provider, folder and account") }
                     Button(model.canResume ? "New" : "Connect", action: model.start).disabled(!model.configured)
                 }
             }.padding(.horizontal, 16).padding(.vertical, 8)
@@ -205,10 +206,11 @@ private struct ACPConversationTab: View {
     @Environment(\.volantTheme) private var theme
     private var folder: String? { model.project.isEmpty ? nil : (model.project as NSString).lastPathComponent }
     private var waiting: Bool { !model.state.permissions.isEmpty }
-    /// Provider, folder, first question and status, so VoiceOver tells the buttons apart without the
-    /// visual marks.
+    /// Provider, account, folder, first question and status, so VoiceOver tells the buttons apart
+    /// without the visual marks.
     private var spokenLabel: String {
         var parts = [model.providerTitle]
+        if let account = model.account { parts.append("account " + account.label) }
         if let folder { parts.append(folder) }
         if let topic = model.topic { parts.append(topic) }
         parts.append(waiting ? "Needs your permission" : model.state.status)
@@ -220,6 +222,7 @@ private struct ACPConversationTab: View {
                 if waiting { Image(systemName: "hand.raised") }
                 else if model.state.busy { ProgressView().controlSize(.mini) }
                 Text(model.providerTitle).lineLimit(1)
+                if let account = model.account { ACPAccountLabel(label: account.label) }
                 if let folder { Text(folder).foregroundStyle(.secondary).lineLimit(1) }
                 if let topic = model.topic { Text(topic).foregroundStyle(.secondary).lineLimit(1) }
             }
@@ -272,6 +275,7 @@ private struct ACPActivityRow: View {
                 Image(systemName: model.state.permissions.isEmpty ? "bubble.left.and.bubble.right" : "hand.raised")
                 Text("AI Chat").fontWeight(.medium)
                 Text(model.providerTitle).foregroundStyle(.secondary).lineLimit(1).help(model.providerTitle)
+                if let account = model.account { ACPAccountLabel(label: account.label) }
                 Text(model.state.status).foregroundStyle(.secondary).lineLimit(1)
                 Spacer()
                 Text("Open conversation").foregroundStyle(.secondary)
@@ -286,7 +290,8 @@ private struct ACPConversationBadge: View {
     @Environment(\.volantTheme) private var theme
     private var waiting: Bool { !model.state.permissions.isEmpty }
     private var spokenLabel: String {
-        let parts: [String?] = [model.providerTitle, model.topic, waiting ? "Needs your permission" : model.state.status]
+        let account: String? = model.account.map { "account " + $0.label }
+        let parts: [String?] = [model.providerTitle, account, model.topic, waiting ? "Needs your permission" : model.state.status]
         return parts.compactMap { $0 }.joined(separator: ", ")
     }
     var body: some View {
@@ -294,6 +299,7 @@ private struct ACPConversationBadge: View {
             HStack(spacing: 3) {
                 if waiting { Image(systemName: "hand.raised") }
                 Text(model.providerTitle).lineLimit(1)
+                if let account = model.account { ACPAccountLabel(label: account.label) }
                 if let topic = model.topic { Text(topic).foregroundStyle(.secondary).lineLimit(1) }
             }
             .padding(.horizontal, 6).padding(.vertical, 2)
@@ -302,6 +308,15 @@ private struct ACPConversationBadge: View {
         .buttonStyle(.plain)
         .help(model.state.status)
         .accessibilityLabel(spokenLabel)
+    }
+}
+
+/// The account a conversation runs under. Nothing is shown for the provider's default login.
+private struct ACPAccountLabel: View {
+    let label: String
+    var body: some View {
+        Label(label, systemImage: "person.crop.circle").foregroundStyle(.secondary).lineLimit(1)
+            .accessibilityLabel("Account " + label)
     }
 }
 

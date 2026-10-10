@@ -21,7 +21,8 @@ public enum ChildProcessEnvironment {
     }
 
     /// An ACP provider: its own executable folder searched first, then owner tool folders. The resolved
-    /// launch's variables (such as `CLAUDE_CODE_EXECUTABLE`) are applied last.
+    /// launch's variables (such as `CLAUDE_CODE_EXECUTABLE`, and the account folder variable from
+    /// `ACPAccountProfile.launchVariables`) are applied last.
     public static func acpProvider(home: String, user: String, executable: String, launch: [String: String]) -> [String: String] {
         let folder = URL(fileURLWithPath: executable).deletingLastPathComponent().path
         var environment = base(home: home, user: user, path: [folder] + userToolPath(home: home, includeSbin: true))

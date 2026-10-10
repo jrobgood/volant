@@ -21,9 +21,9 @@ final class ACPResumeRecordTests: XCTestCase {
     func testRecordNeedsAKnownProviderAndMatchesOnlyItsOwnFolder() {
         let record = ACPResumeRecord(provider: "claude", project: "/tmp/fictional-project", sessionID: "fictional-session")
         XCTAssertTrue(record.isValid)
-        XCTAssertTrue(record.matches(provider: "claude", project: "/tmp/fictional-project"))
-        XCTAssertFalse(record.matches(provider: "codex", project: "/tmp/fictional-project"))
-        XCTAssertFalse(record.matches(provider: "claude", project: ""))
+        XCTAssertTrue(record.matches(provider: "claude", project: "/tmp/fictional-project", profile: ""))
+        XCTAssertFalse(record.matches(provider: "codex", project: "/tmp/fictional-project", profile: ""))
+        XCTAssertFalse(record.matches(provider: "claude", project: "", profile: ""))
         XCTAssertFalse(ACPResumeRecord(provider: "unknown", project: "", sessionID: "fictional-session").isValid)
         XCTAssertFalse(ACPResumeRecord(provider: "claude", project: "", sessionID: "bad id").isValid)
     }
@@ -31,6 +31,31 @@ final class ACPResumeRecordTests: XCTestCase {
     func testRecordRoundTripsThroughJSON() throws {
         let record = ACPResumeRecord(provider: "codex", project: "", sessionID: "fictional-session", savedAt: Date(timeIntervalSince1970: 1_800_000_000))
         XCTAssertEqual(try JSONDecoder().decode(ACPResumeRecord.self, from: JSONEncoder().encode(record)), record)
+    }
+
+    func testAProfileMustMatchAndAnOlderRecordReadsAsTheDefaultLogin() throws {
+        let work = ACPResumeRecord(provider: "claude", project: "", sessionID: "fictional-session", profile: "/tmp/fictional-claude-work")
+        XCTAssertTrue(work.isValid)
+        XCTAssertTrue(work.matches(provider: "claude", project: "", profile: "/tmp/fictional-claude-work"))
+        XCTAssertFalse(work.matches(provider: "claude", project: "", profile: ""), "the default login cannot continue another login's session")
+        XCTAssertFalse(work.matches(provider: "claude", project: "", profile: "/tmp/fictional-claude-other"))
+        XCTAssertEqual(try JSONDecoder().decode(ACPResumeRecord.self, from: JSONEncoder().encode(work)), work)
+
+        let plain = ACPResumeRecord(provider: "claude", project: "", sessionID: "fictional-session")
+        XCTAssertTrue(plain.matches(provider: "claude", project: "", profile: ""))
+        XCTAssertFalse(plain.matches(provider: "claude", project: "", profile: "/tmp/fictional-claude-work"))
+        XCTAssertTrue(ACPResumeRecord(provider: "claude", project: "", sessionID: "fictional-session", profile: "").matches(provider: "claude", project: "", profile: ""))
+
+        let older = #"{"provider":"claude","project":"","sessionID":"fictional-session","savedAt":0}"#
+        let record = try JSONDecoder().decode(ACPResumeRecord.self, from: Data(older.utf8))
+        XCTAssertNil(record.profile)
+        XCTAssertTrue(record.matches(provider: "claude", project: "", profile: ""), "a record saved before accounts existed belongs to the default login")
+
+        let composed = ACPResumeRecord(provider: "codex", project: "", sessionID: "fictional-session", profile: "/tmp/fictional-caf\u{E9}")
+        XCTAssertTrue(composed.matches(provider: "codex", project: "", profile: "/tmp/fictional-cafe\u{301}"), "file names compare the same in either Unicode form")
+        for bad in ["fictional-claude-work", "/tmp/fictional\u{0}work"] {
+            XCTAssertFalse(ACPResumeRecord(provider: "claude", project: "", sessionID: "fictional-session", profile: bad).isValid, bad)
+        }
     }
 
     func testLoadSessionCapabilityIsReadOnlyWhenAdvertised() {

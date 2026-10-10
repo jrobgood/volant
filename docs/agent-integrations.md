@@ -204,7 +204,7 @@ native light and dark renders.
 
 Every process Volant spawns receives an explicit, complete environment built by `ChildProcessEnvironment` in VolantCore; none inherits the caller's. The base is `HOME`, `USER`, a fixed `PATH` and `LANG=en_US.UTF-8`. Each spawn adds only what it names:
 
-- ACP providers: the provider executable's folder first, then `~/.local/bin`, Homebrew and the system folders including `sbin`, plus the resolver's launch variables such as `CLAUDE_CODE_EXECUTABLE`.
+- ACP providers: the provider executable's folder first, then `~/.local/bin`, Homebrew and the system folders including `sbin`, plus the resolver's launch variables such as `CLAUDE_CODE_EXECUTABLE`, and for a conversation under an account, `CLAUDE_CONFIG_DIR` or `CODEX_HOME` set to its folder (see Provider accounts).
 - Herdr CLI: `~/.local/bin`, Homebrew and system folders without `sbin`, plus `SSH_AUTH_SOCK` when the helper has one, for saved remote machines.
 - Apple tools (`/usr/bin/shortcuts` in the agent helper, `/usr/bin/pmset` in the app): system folders only.
 - git status for change counts keeps its own `LC_ALL=C` environment (`RepositoryStatusCommand.environment`).
@@ -287,3 +287,76 @@ passed, those 12 tests and the ACP check included; the UI job, which renders
 the 5 above included. Volant's PR checks build Core but do not run its package tests. Not verified:
 several live conversations with real providers in the signed installed app, and the conversation
 buttons, the launcher row and the AI Settings count inspected in light and dark renders.
+
+## Provider accounts — October 10, 2026
+
+Every Claude Code and Codex conversation ran under the provider's default login, so using another
+account meant signing out and in again in its CLI, which changed the login for every conversation.
+Both CLIs read their configuration folder from a variable, `CLAUDE_CONFIG_DIR` for Claude Code and
+`CODEX_HOME` for Codex, so a conversation can run under another login by starting with that one
+variable set.
+
+**Settings.** For Claude Code or Codex, AI Settings shows an Account section: a picker with Default
+login and that provider's accounts, a row per account with its folder and Remove, and a label field
+with Choose Folder…, which opens a folder chooser that shows hidden folders. A label has 1 to 40
+characters after trimming, and adding an account refuses a folder path that another account of
+either provider uses or a label that another account of the same provider uses. config.json keeps
+`ai.profiles`, each with `id`, `provider`, `label` and `directory` (an absolute path), and
+`ai.accounts`, a profile ID or "" (the default login) per provider. Reading drops a profile with an
+invalid label or folder, or naming a provider other than Claude Code or Codex, a repeated ID, and a
+choice that names no profile of its own provider; a damaged value reads as the default login and the
+rest of the AI settings still load. A `profiles` value that is not a list, or an `accounts` value
+that is not an object, is replaced by the next save that changes any AI setting. Saving keeps
+unknown fields, inside a profile too, and every profile reading dropped as invalid, so an entry from
+a later version survives; an entry that repeats an ID is not kept. The default login is saved as ""
+because saving merges into the file's earlier choices. Removing an account returns its provider's
+choice to the default login.
+
+**Launch.** `ACPAccountProfile.launchVariables` in Core returns the provider's one variable set to
+the folder, and refuses other providers and a folder that is not an absolute path or holds NUL.
+`acpStart` and `acpResume` in the helper take the folder, or "" for the default login, which adds
+no variable. The helper applies the Core rules first, then checks that the folder exists as a
+directory, before it takes a conversation slot, and adds the variable to the provider's launch
+variables. It reads, copies and moves nothing in the folder, and provider OAuth tokens are never
+copied. Each start and resume still reaches the conversation through the same `acpRead(after:)`
+revision polling as before.
+
+**One account per conversation.** Each start sets `ACPModel.account` from the settings, and a
+changed choice or a removed account leaves it in place while the conversation runs and after it
+ends, so a transcript keeps the account that produced it. Each settings change points the next start
+of every conversation, running or ended, at the account now chosen for its provider. When the
+settings show the ended current conversation under another provider or connection, it shows the
+account chosen for that one, and back under the provider and connection it ran under, the account it
+ran under, so a label always belongs to the provider shown beside it. A BYOK, Local Models or Apple
+Intelligence conversation has no account. The chat header, the conversation buttons, the launcher
+row and its badges show the label, and their accessibility labels include it; the default login
+shows nothing.
+
+**Resume.** `ACPResumeRecord` gains `profile`, the account folder; nil or "" is the default login,
+and an older record reads as the default login. Resume is offered only when the provider, working
+folder and account folder all match the current choice, and loads the session under the recorded
+account folder. The rule for sessions open elsewhere still applies.
+
+**Sign-in.** Signing in happens in the provider's own CLI, as the Settings footer shows:
+`CLAUDE_CONFIG_DIR=<folder> claude`, then `/login`, or `CODEX_HOME=<folder> codex login`. Claude
+Code 2.1.280, read from its binary, names its macOS Keychain item after the config folder, which
+keeps logins apart. A build that keeps one item for every folder would have `/login` under an
+account replace the default login, and Volant does not check the Claude Code version. Whether the
+agent helper's Keychain access, through the caller's security session it joins, reaches each item
+has not been checked on a Mac. Codex keeps its login in files under `CODEX_HOME` unless configured
+otherwise. There is no automatic routing between accounts, and no App Intent chooses one.
+
+Evidence: in Core, `ACPAccountProfileTests` cover the one variable each provider reads, profile and
+label validation, the per-provider choice, adding and removing accounts, and reading and saving both
+settings beside unknown fields; `ACPResumeRecordTests` adds a case for the account folder on a
+resume record. Volant's own PR checks do not run Core's package tests, so these need
+`swift test --package-path Core`. `ACPAccountTests` replace the helper with an injected start and
+pass helper snapshots encoded under rising revisions through `ACPModel.handleRead`. They cover what
+the model asks the helper for, the account a conversation keeps while its next start follows the
+setting, the provider and account shown together, an API conversation under no account, the account
+a resume record keeps, and Resume under the same account only. The ACP check's account case runs the
+helper's start and resume: one variable for an account, none for the default login, a refused
+folder that takes no slot, and nothing added to or moved out of the folder.
+`tools/launcher/actions.swift` renders `ai-acp-accounts-settings`, `ai-acp-accounts` and
+`ai-acp-accounts-strip`. Not verified: conversations under two accounts with real providers in the
+signed installed app, the folder chooser, and the renders inspected in light and dark.

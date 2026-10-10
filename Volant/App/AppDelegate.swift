@@ -399,7 +399,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsPanel.refresh(config, apps: index.apps)
         registerHotKeys()
         panel.apply(config: config)
-        if let ai = try? AIConfiguration.load() { panel.model.acp.configure(ai) }
+        if let ai = try? AIConfiguration.load() { panel.model.conversations.apply(ai) }
         clipboardStore.retention = config.clipboardRetention
         settingsSync.update(enabled: config.syncSettingsWithICloud)
         currencyRates.keyChanged()
