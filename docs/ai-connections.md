@@ -119,6 +119,10 @@ combination cannot be bound twice. Escape while listening cancels and discards t
 without touching the clipboard; once transcription has started it runs to the end, because the
 stop completion would otherwise still copy.
 
+While listening, the default output is lowered to a fifth of its level and restored when listening
+ends; Settings → General → Dictation → Lower volume while dictating turns it off. See
+[lowering volume while dictating](system-control.md#lowering-volume-while-dictating-2026-10-10).
+
 Availability is rechecked at start, because microphone permission can be revoked between uses. On
 macOS 15 the command is present and reports that it needs macOS 26, the same pattern Apple
 Intelligence uses.

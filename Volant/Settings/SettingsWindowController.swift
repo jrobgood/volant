@@ -141,6 +141,13 @@ private struct SettingsView: View {
                 SettingsFooter("Caffeinate sessions keep the display from dimming, sleeping or locking. Turn this off to keep only the Mac awake and let the display sleep. Add display or system to a caffeinate command to choose for one session.")
             }
             Section {
+                Toggle("Lower volume while dictating", isOn: boolean("dictationLowersVolume", state.config.dictationLowersVolume))
+            } header: {
+                Text("Dictation")
+            } footer: {
+                SettingsFooter("While the microphone is listening, the current output plays at a fifth of its volume. It returns to its previous level when you stop, unless you changed the volume yourself in the meantime. Muted outputs and outputs without software volume are left alone.")
+            }
+            Section {
                 if !state.registrationErrors.isEmpty { Text(state.registrationErrors.joined(separator: "\n")).foregroundStyle(.red) }
                 GlobalShortcutRow(title: "Show Volant", key: "summonHotKey", value: state.config.summonHotKey, configURL: configURL, onChange: onChange)
                 GlobalShortcutRow(title: "Open Notes", key: "notesHotKey", value: state.config.notesHotKey, configURL: configURL, onChange: onChange)

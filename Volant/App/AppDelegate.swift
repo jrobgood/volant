@@ -205,6 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         panel.model.caffeinate.stop()
+        panel.model.restoreDictationVolume()
         clipboardMonitor.stop()
         notesStore.flush()
         HotKeyCenter.shared.unregisterAll()

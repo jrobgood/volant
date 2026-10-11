@@ -385,6 +385,10 @@ final class LauncherModel: ObservableObject {
     private var indexStateSubscription: AnyCancellable?
     private let contacts = ContactSearch()
     let dictation = SpeechDictation()
+    var dictationVolume = DictationVolumeDuck()
+    private var dictationPhaseSubscription: AnyCancellable?
+    /// A volume problem from this dictation, repeated in its final message so a quiet Mac is explained.
+    private var dictationVolumeProblem: String?
     private let agenda = CalendarAgenda()
     private var searchesAppIndex = false
     private var generation = 0
@@ -420,6 +424,9 @@ final class LauncherModel: ObservableObject {
             guard let self, self.showingClipboard else { return }
             self.objectWillChange.send()
             self.refreshClipboardResults()
+        }
+        dictationPhaseSubscription = dictation.$phase.removeDuplicates().sink { [weak self] phase in
+            self?.dictationPhaseChanged(phase)
         }
         caffeinateSubscription = caffeinate.$command.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async {
@@ -895,7 +902,7 @@ final class LauncherModel: ObservableObject {
         actionFeedback = "Listening… \(stopHint), or Escape to cancel."
         dictation.start { [weak self] _ in
             guard let self, case .failed(let reason) = self.dictation.phase else { return }
-            self.actionFeedback = reason
+            self.reportDictation(reason)
         }
     }
 
@@ -904,7 +911,7 @@ final class LauncherModel: ObservableObject {
     func cancelDictation() {
         guard dictation.isListening else { return }
         dictation.cancel()
-        actionFeedback = "Dictation cancelled."
+        reportDictation("Dictation cancelled.")
     }
 
     func finishDictation() {
@@ -913,13 +920,41 @@ final class LauncherModel: ObservableObject {
         dictation.stop { [weak self] transcript in
             guard let self else { return }
             guard let transcript else {
-                if case .failed(let reason) = self.dictation.phase { self.actionFeedback = reason }
-                else { self.actionFeedback = "Nothing was heard." }
+                if case .failed(let reason) = self.dictation.phase { self.reportDictation(reason) }
+                else { self.reportDictation("Nothing was heard.") }
                 return
             }
             self.copy(transcript)
-            self.actionFeedback = "Copied \(transcript.count) characters. Press Command-V to paste."
+            self.reportDictation("Copied \(transcript.count) characters. Press Command-V to paste.")
         }
+    }
+
+    /// Lowers the output once the microphone is live and restores it as soon as listening ends,
+    /// whether dictation finished, was cancelled or failed. Transcription after release runs at
+    /// the restored level. Volume problems never interrupt dictation; they are only reported.
+    private func dictationPhaseChanged(_ phase: SpeechDictation.Phase) {
+        dictationVolume.onProblem = { [weak self] problem in self?.noteDictationVolumeProblem(problem) }
+        let problem = phase == .listening
+            ? (config.dictationLowersVolume ? dictationVolume.lower() : nil)
+            : dictationVolume.restore()
+        if let problem { noteDictationVolumeProblem(problem) }
+    }
+
+    /// Shows a volume problem now and keeps it for the dictation's final message.
+    private func noteDictationVolumeProblem(_ problem: String) {
+        dictationVolumeProblem = problem
+        actionFeedback = [actionFeedback, problem].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// Sets a dictation's final message, followed by any volume problem it ran into.
+    private func reportDictation(_ message: String) {
+        actionFeedback = [message, dictationVolumeProblem].compactMap { $0 }.joined(separator: " ")
+        dictationVolumeProblem = nil
+    }
+
+    /// Puts a lowered output back before Volant quits.
+    func restoreDictationVolume() {
+        dictationVolume.restore()
     }
 
     /// Row images are built once per result set. Building an NSImage inside a row body rebuilds it

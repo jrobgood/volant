@@ -73,6 +73,18 @@ export default function SystemControl() {
         common on digital connections — are labeled as such and explained rather
         than silently failing.
       </p>
+      <p>
+        While dictation is listening, Volant lowers your current output to a
+        fifth of its volume so playback doesn’t compete with your voice, and
+        puts it back when listening stops, whether you finished, cancelled, or
+        dictation failed. If you change the volume yourself in the meantime,
+        your new level is kept. Muted outputs, outputs without software volume,
+        and outputs that are already nearly silent are left alone, and mute is
+        never changed. If sound moves to another output mid-dictation, the
+        original output is restored right away and the new one isn’t touched.
+        A restore that fails is reported in the launcher. Turn this off with{' '}
+        <strong>Lower volume while dictating</strong> in Settings → General.
+      </p>
       <div className="docs-note">
         <p>
           <code>vol</code>, <code>volume</code>, <code>mute</code>, and{' '}

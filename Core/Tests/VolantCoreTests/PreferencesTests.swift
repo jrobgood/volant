@@ -30,6 +30,21 @@ final class PreferencesTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNotNil(object["future"])
     }
+    /// Dictation lowers the output unless the owner turns it off, stays per Mac, and patches narrowly.
+    func testDictationVolumeSettingDefaultsOnAndPatchesNarrowly() throws {
+        XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).dictationLowersVolume)
+        XCTAssertFalse(SettingsSync.keys.contains("dictationLowersVolume"))
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"caffeinateKeepsDisplayAwake":false,"future":{"keep":1}}"#.utf8).write(to: url)
+        try Preferences.updateBoolean("dictationLowersVolume", value: false, at: url)
+        let data = try Data(contentsOf: url)
+        let config = try JSONDecoder().decode(Preferences.self, from: data)
+        XCTAssertFalse(config.dictationLowersVolume)
+        XCTAssertFalse(config.caffeinateKeepsDisplayAwake)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNotNil(object["future"])
+    }
     func testPinnedHarnessRoundTripPreservesOtherSettings() throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: url) }

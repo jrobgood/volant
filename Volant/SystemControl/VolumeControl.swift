@@ -45,6 +45,7 @@ struct AudioOutputState {
     let canSetVolume: Bool
     let muted: Bool?
     let canSetMute: Bool
+    var uid: String?
     var level: Float32? { volumes.map(\.value).max() }
     var summary: String {
         let levelText = level.map { "\(Int(($0 * 100).rounded()))%" } ?? "Volume unavailable"
@@ -54,8 +55,18 @@ struct AudioOutputState {
 
 protocol AudioHardwareAccess {
     func output() throws -> AudioOutputState
+    func output(of device: AudioDeviceID) throws -> AudioOutputState
     func setVolume(_ value: Float32, channel: UInt32, device: AudioDeviceID) throws
     func setMute(_ value: Bool, device: AudioDeviceID) throws
+}
+
+extension AudioHardwareAccess {
+    /// Reads one specific device. Hardware that only knows the default output can answer only for it.
+    func output(of device: AudioDeviceID) throws -> AudioOutputState {
+        let state = try output()
+        guard state.device == device else { throw VolumeFailure(message: "That audio output is no longer available.") }
+        return state
+    }
 }
 
 struct VolumeFailure: LocalizedError {
@@ -128,8 +139,23 @@ struct CoreAudioHardware: AudioHardwareAccess {
         guard read(AudioObjectID(kAudioObjectSystemObject), address(kAudioHardwarePropertyDefaultOutputDevice, global: true), into: &device), device != kAudioObjectUnknown else {
             throw VolumeFailure(message: "No audio output is available. Connect an output and try again.")
         }
+        return state(of: device)
+    }
+    /// Reads a specific device, which must still be connected. Used to restore a device that is no
+    /// longer the default without touching whichever output replaced it.
+    func output(of device: AudioDeviceID) throws -> AudioOutputState {
+        var alive: UInt32 = 0
+        guard device != kAudioObjectUnknown, read(device, address(kAudioDevicePropertyDeviceIsAlive, global: true), into: &alive), alive != 0 else {
+            throw VolumeFailure(message: "That audio output is no longer available.")
+        }
+        return state(of: device)
+    }
+    /// Reads name, UID, channel volumes and mute for a device the caller has already resolved.
+    private func state(of device: AudioDeviceID) -> AudioOutputState {
         var name: CFString = "Audio Output" as CFString
         _ = read(device, address(kAudioObjectPropertyName, global: true), into: &name)
+        var uid: CFString = "" as CFString
+        let hasUID = read(device, address(kAudioDevicePropertyDeviceUID, global: true), into: &uid)
         var channels: [UInt32] = [0]
         var volume: Float32 = 0
         if !read(device, address(kAudioDevicePropertyVolumeScalar), into: &volume) {
@@ -151,7 +177,7 @@ struct CoreAudioHardware: AudioHardwareAccess {
         var mute: UInt32 = 0
         let muteProperty = address(kAudioDevicePropertyMute)
         let hasMute = read(device, muteProperty, into: &mute)
-        return AudioOutputState(device: device, name: name as String, volumes: volumes, canSetVolume: canSetVolume, muted: hasMute ? mute != 0 : nil, canSetMute: hasMute && writable(device, muteProperty))
+        return AudioOutputState(device: device, name: name as String, volumes: volumes, canSetVolume: canSetVolume, muted: hasMute ? mute != 0 : nil, canSetMute: hasMute && writable(device, muteProperty), uid: hasUID && !(uid as String).isEmpty ? uid as String : nil)
     }
     private func write<T>(_ value: T, device: AudioDeviceID, property: AudioObjectPropertyAddress) throws {
         var property = property

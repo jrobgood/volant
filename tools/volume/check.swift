@@ -60,4 +60,19 @@ do { _ = try control.perform(.mute); verify(false, "Unsupported mute must throw"
 verify(hardware.writes.count == count, "Unsupported controls never write")
 hardware.writable = true
 do { _ = try control.perform(.set(101)); verify(false, "Invalid programmatic percentage must throw") } catch {}
-print("PASS: volume parsing, limits, mute behavior, balance, device change, rollback, unsupported controls")
+hardware.values = [(1, 0.5), (2, 0.25)]
+hardware.device = 3
+hardware.mute = false
+let duck = DictationVolumeDuck(hardware: hardware, monitor: nil)
+verify(duck.lower() == nil && duck.isLowered, "Dictation lowers a settable output")
+verify(abs(hardware.values[0].value - 0.1) < 0.001 && abs(hardware.values[1].value - 0.05) < 0.001, "Dictation lowering preserves balance")
+verify(duck.restore() == nil && !duck.isLowered, "Dictation restores its own lowering")
+verify(abs(hardware.values[0].value - 0.5) < 0.001 && abs(hardware.values[1].value - 0.25) < 0.001, "Dictation restores the exact prior levels")
+duck.lower(); hardware.device = 4
+verify(duck.restore() != nil, "A lowered output that disappeared is reported")
+verify(hardware.writes.last == 3, "Restoring never writes to the replacement output")
+hardware.mute = true
+let writesBeforeMuted = hardware.writes.count
+duck.lower(); duck.restore()
+verify(hardware.writes.count == writesBeforeMuted && hardware.mute, "Muted outputs are never lowered or unmuted")
+print("PASS: volume parsing, limits, mute behavior, balance, device change, rollback, unsupported controls, dictation lowering")
