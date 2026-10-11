@@ -6,6 +6,11 @@ and the temporary Escape key, described under "Hotkey indicator (implemented)". 
 and leaves Command-V to the owner. The owner has decided to add an Accessibility helper and asked
 whether it can run only for people who turn the feature on.
 
+**Phase 0 has run** (October 11, 2026, in disposable Tart guests). Its results are in
+[input-host spike](input-host-spike.md) and summarized under "Risks and open questions" below. The
+owner decisions recorded there (dictation output as a setting, live typing, AX-first insertion,
+Volant never frontmost) supersede the matching parts of this design.
+
 Labels used below: **Verified** means an Apple document, an Apple engineer's forum post, source
 code read for this review, or a measurement already recorded in this repository. **Unverified**
 means a community report, a vendor's help page, or reasoning that still needs a measurement. Every
@@ -426,6 +431,77 @@ Host UI runs need an agreed window with the owner. Routine checks run in the VM.
   - Should a target that changed fall back to copying (proposed), or follow the new frontmost app?
   - Should smart spacing be on by default once Phase 3 ships?
   - Should the keystroke fallback exist at all?
+
+### Owner decisions since this design (October 11, 2026)
+
+- **Dictation output is a setting**, not an on/off for typing: **Copy to clipboard** (default,
+  today's behavior, no helper) or **Type at the cursor** (needs the helper; choosing it is what
+  first connects to `VolantInputHost` and leads to the one-time Accessibility request). With typing
+  on, a sub-option chooses **while speaking** (live: each finalized phrase is inserted as it
+  arrives) or **when finished** (one insertion at the end).
+- **Volant never becomes frontmost during dictation.** A non-activating indicator is being built
+  separately; it replaces the key launcher panel described under "Focus".
+- **Live typing prefers direct AX insertion** (setting `kAXSelectedTextAttribute` on the focused
+  element) per finalized phrase, with synthesized paste only as a fallback, to avoid clipboard
+  churn. This reverses item 4 of "Insertion strategy" for live typing.
+
+### Phase 0 outcomes
+
+Measured in a disposable clone of `volant-ui-xcode` (macOS 15.7.7, SIP disabled) with a
+Developer ID signed sandboxed container and an embedded unsandboxed XPC service; a few points were
+repeated on macOS 27.0. Details, exact steps and what was not exercised:
+[input-host spike](input-host-spike.md).
+
+- **Attribution (resolved, option A confirmed).** tccd charges every check the embedded service
+  makes to the container's identity. The prompt reads "“Input Spike” would like to control this
+  computer using accessibility features", with no purpose string, and the Accessibility list shows
+  the container's name. Turning on that one entry made the service trusted. Volant's entry will
+  read "Volant". The login-item fallback (C) is not needed.
+- **The sandboxed container also reads as trusted.** Its own AX calls still fail
+  (`kAXErrorCannotComplete`), but it can create a listen-only event tap under the same grant. The
+  check that confines `CGEvent.tapCreate`, `AXUIElement` and `CGEventPost` to `VolantInputHost/`
+  is required, not optional.
+- **No Input Monitoring is needed.** With only the Accessibility grant, the service's
+  listen-only and filtering session taps were created and saw keys, and
+  `CGPreflightListenEventAccess` read true. Phase 2 needs no second permission. An Input
+  Monitoring request produced no prompt in the macOS 15 guest.
+- **Prompt-free status is not entry-free on macOS 15.** The service's
+  `AXIsProcessTrustedWithOptions` with prompt false added a denied "Input Spike" entry (switch off)
+  to the Accessibility list. On macOS 27 the same call added nothing. Call `status()` only after
+  the owner chooses Type at the cursor (as planned), and do not promise that choosing it leaves no
+  trace in System Settings.
+- **Updates keep the grant.** A Developer ID build with a bumped `CFBundleVersion`, swapped in as a
+  fresh bundle, stayed trusted on the same TCC row. Ad-hoc builds lost it on every rebuild while
+  the switch still showed on. A real Sparkle run, notarized builds and OS upgrades were not
+  exercised.
+- **AX insertion works only in native Cocoa text.** It inserted phrase by phrase in TextEdit (one
+  undo removed the whole dictation). In Terminal, Safari, Chrome and Obsidian (Electron) the call
+  returned success and did nothing, even where the element said the attribute was settable;
+  Chrome and Electron expose no focused element at all until their accessibility tree is turned
+  on. So AX-first needs a check after each phrase: compare `kAXNumberOfCharactersAttribute` before
+  and after (no text is read), and on no change paste that phrase and keep using paste for the rest
+  of the session. Synthesized paste worked everywhere tested, with one undo step per phrase, and
+  restored the clipboard every time.
+- **Secure input does not stop injection.** Paste and Unicode keystrokes both typed into a Chrome
+  password field while `IsSecureEventInputEnabled()` was true, and into a Safari password field
+  while it was false. The helper's own refusal is the only protection: refuse on the
+  `AXSecureTextField` subrole or on secure input. Where no focused element is exposed (Chrome and
+  Electron by default), secure input is the only signal left. Whether Electron password fields turn
+  on secure input is untested.
+- **Bare Escape and Return through Carbon work.** The sandboxed container registered both with no
+  modifiers and no permission (`noErr`), received them, and the frontmost app did not; after
+  unregistering, Return reached the app again. Phase 1 can cancel and finish with them. This was
+  measured with HID-posted events, not a physical keyboard.
+
+New open questions from Phase 0:
+
+- Can an editor that applies an AX insertion asynchronously update its character count late, so
+  the check falls back to paste and the phrase lands twice? Measure in Phase 1, and keep the
+  fallback sticky for the session.
+- For live typing into apps where AX fails, is one paste per phrase (about 0.4 s and a clipboard
+  write and restore each) acceptable, or should those apps get only the final text?
+- Should Volant refuse to type when no focused element is exposed and secure input is off, which
+  would rule out Chrome and Electron, or accept the secure-input signal alone there?
 
 ## Phased implementation plan
 

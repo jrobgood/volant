@@ -1,0 +1,11 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input spike textarea</title>
+<textarea id="t" rows="6" cols="60" autofocus></textarea>
+<p id="m">events=0</p>
+<script>
+  let n = 0;
+  const t = document.getElementById('t');
+  t.addEventListener('input', () => { n += 1; document.getElementById('m').textContent = 'events=' + n; });
+  window.addEventListener('load', () => t.focus());
+</script>

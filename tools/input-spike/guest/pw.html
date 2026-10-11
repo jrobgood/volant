@@ -1,0 +1,10 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Input spike password</title>
+<input id="p" type="password" autofocus>
+<p id="m">pwlen=0</p>
+<script>
+  const p = document.getElementById('p');
+  p.addEventListener('input', () => { document.getElementById('m').textContent = 'pwlen=' + p.value.length; });
+  window.addEventListener('load', () => p.focus());
+</script>
