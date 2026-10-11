@@ -2,41 +2,10 @@ import AppKit
 import VolantCore
 
 
-/// Opens web/mail links and Apple's documented Shortcuts run URL.
-/// `{query}` is encoded as a single value, so typed text cannot add URL parameters.
+/// Opens web/mail links and Apple's documented Shortcuts run URL; validation lives on `Quicklink`
+/// so the launcher, Raycast import and configuration patches agree on what may open.
 enum QuicklinkResolver {
-    static let allowedSchemes: Set<String> = ["http", "https", "mailto"]
-
-    static func url(for link: Quicklink, query: String) -> URL? {
-        let valueCharacters = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-._~"))
-        let encoded = query.addingPercentEncoding(withAllowedCharacters: valueCharacters) ?? ""
-        let text = link.url.replacingOccurrences(of: "{query}", with: encoded)
-        guard let url = URL(string: text), let scheme = url.scheme?.lowercased() else { return nil }
-        if scheme == "shortcuts" { return isShortcutRun(url) ? url : nil }
-        guard allowedSchemes.contains(scheme) else { return nil }
-        return url
-    }
-
-    static func isShortcutRun(_ url: URL) -> Bool {
-        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              parts.scheme?.lowercased() == "shortcuts", parts.host == "run-shortcut",
-              parts.path.isEmpty, parts.user == nil, parts.password == nil,
-              parts.port == nil, parts.fragment == nil else { return false }
-        let items = parts.queryItems ?? []
-        let names = items.map(\.name)
-        guard Set(names).count == names.count,
-              Set(names).isSubset(of: ["name", "input", "text"]),
-              let name = items.first(where: { $0.name == "name" })?.value,
-              !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
-        let input = items.first { $0.name == "input" }
-        let text = items.first { $0.name == "text" }
-        if input == nil { return text == nil }
-        switch input?.value {
-        case "text": return text?.value != nil
-        case "clipboard": return text == nil
-        default: return false
-        }
-    }
+    static func url(for link: Quicklink, query: String) -> URL? { link.resolvedURL(query: query) }
 
     static func needsQuery(_ link: Quicklink) -> Bool { link.url.contains("{query}") }
 

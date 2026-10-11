@@ -41,6 +41,8 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
         isReleasedWhenClosed = false
         hidesOnDeactivate = false
         model.dismiss = { [weak self] in self?.orderOut(nil) }
+        model.restoreSearchEditor = { [weak self] in self?.restoreSearchEditorAfterForm() }
+        model.focusEntryName = { [weak self] in self?.focusEntryNameField() }
         contentView = NSHostingView(rootView: ThemedRoot { ThemedLauncher(model: model) })
     }
 
@@ -56,7 +58,7 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
     var keepsVisibleOnBlur: Bool {
         (model.showingACP && (model.acp.active || model.acp.submitting ||
         !model.acp.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)) ||
-        model.pendingExtension != nil || model.extensionRunning || model.wifiJoin != nil || model.connectivityBusy ||
+        model.pendingExtension != nil || model.extensionRunning || model.wifiJoin != nil || model.connectivityBusy || model.entryForm != nil ||
         (model.showingTranslation && model.translation.hasDraft) ||
         model.dictation.phase == .listening || model.dictation.phase == .finishing
     }
@@ -170,6 +172,49 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
             }
             trace.finish(ready: self.firstResponder is NSTextView)
         }
+    }
+
+    /// When a form's focused field is removed, AppKit leaves the window itself as first responder,
+    /// so neither SwiftUI focus nor its key handlers see the next key. After SwiftUI has removed
+    /// the form, this hands focus to the search field unless the field already holds it.
+    private func restoreSearchEditorAfterForm() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible, self.model.entryForm == nil,
+                  let field = self.searchInput(in: self.contentView), field.currentEditor() == nil else { return }
+            self.makeFirstResponder(field)
+        }
+    }
+
+    /// SwiftUI's focus request does not reliably take first responder from the AppKit search field,
+    /// so after the form is installed this hands focus to its name field directly, retrying briefly
+    /// while SwiftUI builds the form. A form closed in the meantime is left alone.
+    private func focusEntryNameField(attempt: Int = 0) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible, self.model.entryForm != nil else { return }
+            guard let kind = self.model.entryForm?.kind, let field = self.entryNameField(in: self.contentView, placeholder: kind.namePlaceholder) else {
+                if attempt < 10 { self.focusEntryNameField(attempt: attempt + 1) }
+                return
+            }
+            if field.currentEditor() == nil { self.makeFirstResponder(field) }
+        }
+    }
+
+    /// Finds the entry form's name field by its accessibility identifier or its placeholder.
+    private func entryNameField(in view: NSView?, placeholder: String) -> NSTextField? {
+        guard let view else { return nil }
+        if let field = view as? NSTextField,
+           field.accessibilityIdentifier() == "launcher-entry-name" || field.placeholderString == placeholder { return field }
+        for child in view.subviews { if let found = entryNameField(in: child, placeholder: placeholder) { return found } }
+        return nil
+    }
+
+    /// Escape in a form's multi-line text would otherwise run NSTextView completion. It closes
+    /// the form instead, unless an input method is composing.
+    private func cancelsEntryForm(_ event: NSEvent) -> Bool {
+        guard event.type == .keyDown, event.keyCode == 53, model.entryForm != nil,
+              event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty else { return false }
+        if let editor = firstResponder as? NSTextView, editor.hasMarkedText() { return false }
+        return true
     }
 
     private func searchInput(in view: NSView?) -> NSTextField? {
@@ -294,6 +339,10 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
             model.openSettings()
             return
         }
+        if cancelsEntryForm(event) {
+            if !event.isARepeat { model.cancelEntryForm() }
+            return
+        }
         // Own Tab only in the main search editor, never in a form, menu, or chat.
         if event.type == .keyDown, event.keyCode == 48,
            event.modifierFlags.intersection([.command, .control, .option, .shift]).isEmpty,
@@ -313,7 +362,7 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
             return true
         }
         if modifiers == .command, event.charactersIgnoringModifiers?.lowercased() == "k",
-           model.selectedRow?.supportsActions == true {
+           model.entryForm == nil, model.selectedRow?.supportsActions == true {
             model.toggleActions()
             if model.actionTarget == nil { model.searchFocusRequest = UUID() }
             return true
@@ -323,6 +372,7 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
 
     override func cancelOperation(_ sender: Any?) {
         if model.actionTarget != nil { model.actionTarget = nil; model.searchFocusRequest = UUID() }
+        else if model.entryForm != nil { model.cancelEntryForm() }
         else if model.dictation.isListening { model.cancelDictation() }
         else { orderOut(nil) }
     }

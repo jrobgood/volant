@@ -14,6 +14,8 @@ struct LauncherView: View {
 
     /// Whether item actions or the Volant menu are open; either one owns arrow keys and Return.
     private var popoverOpen: Bool { model.actionTarget != nil || model.showingAppMenu }
+    /// Whether a form below the search field owns arrow keys and Return.
+    private var formOpen: Bool { model.wifiJoin != nil || model.entryForm != nil }
     private var fadesEdges: Bool { !reduceMotion && !reduceTransparency }
     /// Whether more results lie above or below the visible part of the list.
     @State private var hiddenEdges = ScrollEdges()
@@ -48,6 +50,8 @@ struct LauncherView: View {
             if let network = model.wifiJoin {
                 WiFiJoinView(model: model, network: network).id(network.id)
                 Divider().opacity(0.6)
+            } else if let draft = model.entryForm {
+                LauncherEntryFormView(model: model, draft: draft).id(draft.id)
             } else if model.showingEmoji {
                 EmojiGridView(model: model)
                 footerBar
@@ -106,20 +110,21 @@ struct LauncherView: View {
         .onChange(of: model.actionTarget?.id) { old, new in if old != nil && new == nil { requestSearchFocus() } }
         .onChange(of: model.showingAppMenu) { old, new in if old && !new { requestSearchFocus() } }
         .onChange(of: model.searchFocusRequest) { _, _ in requestSearchFocus() }
-        .onKeyPress(.downArrow) { guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && model.wifiJoin == nil else { return .ignored }; if model.showingEmoji { model.moveEmojiSelection(LauncherModel.emojiColumns) } else { model.moveSelection(1) }; return .handled }
-        .onKeyPress(.upArrow) { guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && model.wifiJoin == nil else { return .ignored }; if model.showingEmoji { model.moveEmojiSelection(-LauncherModel.emojiColumns) } else { model.moveSelection(-1) }; return .handled }
+        .onKeyPress(.downArrow) { guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && !formOpen else { return .ignored }; if model.showingEmoji { model.moveEmojiSelection(LauncherModel.emojiColumns) } else { model.moveSelection(1) }; return .handled }
+        .onKeyPress(.upArrow) { guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && !formOpen else { return .ignored }; if model.showingEmoji { model.moveEmojiSelection(-LauncherModel.emojiColumns) } else { model.moveSelection(-1) }; return .handled }
         .onKeyPress(.leftArrow) { guard model.showingEmoji else { return .ignored }; model.moveEmojiSelection(-1); return .handled }
         .onKeyPress(.rightArrow) { guard model.showingEmoji else { return .ignored }; model.moveEmojiSelection(1); return .handled }
         .onKeyPress(.escape) {
             if model.showingAppMenu { closeAppMenu(); return .handled }
             if model.actionTarget != nil { closeActions(); return .handled }
             if model.dictation.isListening { model.cancelDictation(); return .handled }
+            if model.entryForm != nil { model.cancelEntryForm(); return .handled }
             if model.wifiJoin != nil { guard !model.connectivityBusy else { return .handled }; model.wifiJoin = nil; model.searchFocusRequest = UUID() }
             else { model.dismiss() }
             return .handled
         }
         .onKeyPress(.return, phases: .down) { press in
-            guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && model.wifiJoin == nil else { return .ignored }
+            guard !popoverOpen && !model.showingDictionary && !model.showingTranslation && !model.showingACP && !formOpen else { return .ignored }
             if press.modifiers.contains(.command) && press.modifiers.contains(.shift) { model.activateSwap() }
             else if press.modifiers.contains(.command) { model.activateSecondary() } else { model.activateSelection() }
             return .handled
@@ -243,11 +248,11 @@ struct LauncherView: View {
     }
 
     private func requestSearchFocus() {
-        guard !popoverOpen && !model.showingACP && !model.showingDictionary && !model.showingTranslation else { return }
+        guard !popoverOpen && !model.showingACP && !model.showingDictionary && !model.showingTranslation && model.entryForm == nil else { return }
         // A persistent hosting view does not appear again each time its panel is summoned.
         focused = false
         DispatchQueue.main.async {
-            guard !popoverOpen && !model.showingACP && !model.showingDictionary && !model.showingTranslation else { return }
+            guard !popoverOpen && !model.showingACP && !model.showingDictionary && !model.showingTranslation && model.entryForm == nil else { return }
             focused = true
         }
     }
@@ -408,6 +413,7 @@ private extension CoreCommand {
         case .agents: return Color(white: 0.22)
         case .wifi, .bluetooth: return .blue
         case .audio: return .mint
+        case .newSnippet, .newQuicklink: return .cyan
         }
     }
 }

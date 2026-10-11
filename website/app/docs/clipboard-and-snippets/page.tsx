@@ -74,10 +74,31 @@ export default function ClipboardAndSnippets() {
 
       <h2>Snippets</h2>
       <p>
-        Define snippets in your configuration, each with a name, a keyword, and
-        a body. Type <code>snip</code> to list them, or type a keyword directly.
-        Return copies the body with its placeholders expanded.
+        Each snippet has a name, an optional keyword, and a body. Type{' '}
+        <code>snip</code> to list them, or type a keyword directly. Return
+        copies the body with its placeholders expanded.
       </p>
+
+      <h3>Create a snippet in the launcher</h3>
+      <p>
+        Type <code>new snippet</code> (or <code>create snippet</code>) and press
+        Return, or choose Create Snippet at the end of the <code>snip</code>{' '}
+        list. Fill in a name, an optional one-word keyword, and the text; Return
+        in the name or keyword field saves, Command-Return saves from the text,
+        and Escape goes back to the search without saving. Volant refuses a name
+        or keyword that is already used by another snippet, quicklink, or alias,
+        or that is a built-in command such as <code>clip</code>. The new snippet
+        is added to <code>snippets</code> in{' '}
+        <a href="/docs/configuration">config.json</a> without touching anything
+        else there, and it is ready to use straight away.
+      </p>
+      <div className="docs-note">
+        <p>
+          Creating snippets and quicklinks in the launcher arrives in the next
+          release. Volant 0.2.4 reads them from config.json, Raycast import, and
+          iCloud settings sync.
+        </p>
+      </div>
 
       <h3>Placeholders</h3>
       <div className="docs-table-scroll">

@@ -95,11 +95,11 @@ export default function Configuration() {
             </tr>
             <tr>
               <td><code>snippets</code></td>
-              <td>Reusable text, each with a <code>name</code>, <code>keyword</code>, and <code>body</code>. See <a href="/docs/clipboard-and-snippets">Clipboard and snippets</a>.</td>
+              <td>Reusable text, each with a <code>name</code>, <code>keyword</code>, and <code>body</code>. The next release can also add one from the launcher with <code>new snippet</code>. See <a href="/docs/clipboard-and-snippets">Clipboard and snippets</a>.</td>
             </tr>
             <tr>
               <td><code>quicklinks</code></td>
-              <td>Named URLs with an optional <code>{'{query}'}</code> slot. Supports http, https, mailto, and validated <code>shortcuts://run-shortcut</code> URLs.</td>
+              <td>Named URLs with an optional <code>{'{query}'}</code> slot. Supports http, https, mailto, and validated <code>shortcuts://run-shortcut</code> URLs. The next release can also add one from the launcher with <code>new quicklink</code>.</td>
             </tr>
             <tr>
               <td><code>appearance</code></td>

@@ -2,7 +2,7 @@ import Foundation
 
 /// Discoverable entry points. Data rows keep their own identity and aren't branded as apps.
 public enum CoreCommand: String, CaseIterable, Hashable {
-    case define, translate, caffeinate, emoji, notes, clipboard, shortcuts, agents, ai, talk, confetti, wifi, bluetooth, audio
+    case define, translate, caffeinate, emoji, notes, clipboard, shortcuts, agents, ai, talk, confetti, wifi, bluetooth, audio, newSnippet, newQuicklink
     public var title: String {
         switch self {
         case .ai: return "AI Chat"
@@ -19,12 +19,16 @@ public enum CoreCommand: String, CaseIterable, Hashable {
         case .wifi: return "Wi-Fi Networks"
         case .bluetooth: return "Bluetooth Devices"
         case .audio: return "Audio Devices"
+        case .newSnippet: return "Create Snippet"
+        case .newQuicklink: return "Create Quicklink"
         }
     }
     public var query: String {
         switch self {
         case .emoji: return ":"
         case .clipboard: return "clip"
+        case .newSnippet: return "new snippet"
+        case .newQuicklink: return "new quicklink"
         default: return rawValue
         }
     }
@@ -44,6 +48,8 @@ public enum CoreCommand: String, CaseIterable, Hashable {
         case .wifi: return "wifi"
         case .bluetooth: return "antenna.radiowaves.left.and.right"
         case .audio: return "speaker.wave.2"
+        case .newSnippet: return "text.badge.plus"
+        case .newQuicklink: return "link.badge.plus"
         }
     }
     public var detail: String {
@@ -53,10 +59,22 @@ public enum CoreCommand: String, CaseIterable, Hashable {
         case .translate: return "Translate between languages on your Mac"
         case .caffeinate: return "Keep your Mac awake"
         case .emoji: return "Browse emoji and copy one"
+        case .newSnippet: return "Save text to copy by keyword"
+        case .newQuicklink: return "Save a link to open by name"
         default: return "Built into Volant"
         }
     }
+    /// Extra words a command answers to besides its title and raw value.
+    var searchTerms: String {
+        switch self {
+        case .ai: return "acp"
+        case .newSnippet: return LauncherRouting.snippetCreatePhrases.sorted().joined(separator: " | ")
+        case .newQuicklink: return LauncherRouting.quicklinkCreatePhrases.sorted().joined(separator: " | ") + " | new link"
+        default: return ""
+        }
+    }
+
     public static func search(_ query: String) -> [Self] {
-        allCases.filter { ($0.title + " " + $0.rawValue + ($0 == .ai ? " acp" : "")).localizedCaseInsensitiveContains(query) }
+        allCases.filter { ($0.title + " " + $0.rawValue + " " + $0.searchTerms).localizedCaseInsensitiveContains(query) }
     }
 }

@@ -128,6 +128,16 @@ export default function Launcher() {
         <a href="/docs/shortcuts">Apple Shortcuts</a>. Both live in{' '}
         <a href="/docs/configuration">config.json</a>.
       </p>
+      <p>
+        To add a quicklink without editing the file, type{' '}
+        <code>new quicklink</code> (or <code>create quicklink</code>) and press
+        Return. Give it a name and a URL, then press Return to save or Escape to
+        go back. The name cannot repeat a quicklink, snippet keyword, alias, or
+        built-in command, and the URL must use one of the schemes above. The
+        quicklink is appended to <code>quicklinks</code> in config.json and
+        works at once. This arrives in the next release; Volant 0.2.4 reads
+        quicklinks from config.json.
+      </p>
 
       <h2>The footer tells you the action</h2>
       <p>
