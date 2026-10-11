@@ -49,6 +49,7 @@ if [[ "$run_ui" == true ]]; then
     fi
     ./tools/check-launcher.sh
     ./tools/check-launcher-actions.sh
+    ./tools/check-dictation-hud.sh
     xcodebuild "${build_options[@]}" test -only-testing:VolantTests/NotesRenderTests \
         -only-testing:VolantTests/LiveMarkdownTests/testLanguageChangePreservesContentSelectionAndUndo \
         -only-testing:VolantTests/LiveMarkdownTests/testTypingFenceAndChangingModesDoNotRewriteSource

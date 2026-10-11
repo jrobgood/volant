@@ -389,8 +389,17 @@ final class LauncherModel: ObservableObject {
     let dictation = SpeechDictation()
     var dictationVolume = DictationVolumeDuck()
     private var dictationPhaseSubscription: AnyCancellable?
+    private var dictationTranscriptSubscription: AnyCancellable?
     /// A volume problem from this dictation, repeated in its final message so a quiet Mac is explained.
     private var dictationVolumeProblem: String?
+    /// Where the current dictation reports: the launcher's feedback line, or the floating
+    /// indicator used when dictation starts from the global hotkey.
+    enum DictationSurface { case launcher, indicator }
+    private(set) var dictationSurface = DictationSurface.launcher
+    let dictationIndicator = DictationIndicatorModel()
+    /// Set once a dictation's final message is shown, so a failure reported by both the phase
+    /// change and the completion callback appears once.
+    private var dictationReported = false
     private let agenda = CalendarAgenda()
     private var searchesAppIndex = false
     private var generation = 0
@@ -429,6 +438,10 @@ final class LauncherModel: ObservableObject {
         }
         dictationPhaseSubscription = dictation.$phase.removeDuplicates().sink { [weak self] phase in
             self?.dictationPhaseChanged(phase)
+        }
+        dictationTranscriptSubscription = dictation.$transcript.removeDuplicates().sink { [weak self] text in
+            guard let self, self.dictationSurface == .indicator else { return }
+            self.dictationIndicator.heard(text)
         }
         caffeinateSubscription = caffeinate.$command.dropFirst().sink { [weak self] _ in
             DispatchQueue.main.async {
@@ -899,18 +912,31 @@ final class LauncherModel: ObservableObject {
 
     /// Dictation goes to the clipboard rather than into whatever app was focused. Typing into
     /// another app needs the Accessibility grant Volant deliberately does not request, so the
-    /// transcript is copied and the paste stays the owner's keystroke.
-    func toggleDictation(stopHint: String = "press Return to stop") {
+    /// transcript is copied and the paste stays the owner's keystroke. From the launcher, status
+    /// appears in its feedback line; from the global hotkey (`surface: .indicator`) it appears in
+    /// the floating indicator so the owner's app keeps focus.
+    func toggleDictation(stopHint: String = "press Return to stop", surface: DictationSurface = .launcher) {
         if dictation.isListening { finishDictation(); return }
+        dictationSurface = surface
+        dictationReported = false
+        dictationVolumeProblem = nil
         let availability = SpeechDictation.availability
         guard availability.isReady else {
-            actionFeedback = availability.reason
+            if surface == .indicator {
+                dictationIndicator.finish(availability.reason ?? "Dictation is unavailable.", outcome: .failed)
+            } else {
+                actionFeedback = availability.reason
+            }
             return
         }
-        actionFeedback = "Listening… \(stopHint), or Escape to cancel."
+        if surface == .indicator {
+            dictationIndicator.listen(stopHint: stopHint)
+        } else {
+            actionFeedback = "Listening… \(stopHint), or Escape to cancel."
+        }
         dictation.start { [weak self] _ in
             guard let self, case .failed(let reason) = self.dictation.phase else { return }
-            self.reportDictation(reason)
+            self.reportDictation(reason, outcome: .failed)
         }
     }
 
@@ -919,44 +945,63 @@ final class LauncherModel: ObservableObject {
     func cancelDictation() {
         guard dictation.isListening else { return }
         dictation.cancel()
-        reportDictation("Dictation cancelled.")
+        reportDictation("Dictation cancelled.", outcome: .cancelled)
     }
 
     func finishDictation() {
         guard dictation.isListening else { return }
-        actionFeedback = "Transcribing…"
+        if dictationSurface == .indicator { dictationIndicator.transcribing() } else { actionFeedback = "Transcribing…" }
         dictation.stop { [weak self] transcript in
             guard let self else { return }
             guard let transcript else {
-                if case .failed(let reason) = self.dictation.phase { self.reportDictation(reason) }
-                else { self.reportDictation("Nothing was heard.") }
+                if case .failed(let reason) = self.dictation.phase { self.reportDictation(reason, outcome: .failed) }
+                else { self.reportDictation("Nothing was heard.", outcome: .nothing) }
                 return
             }
             self.copy(transcript)
-            self.reportDictation("Copied \(transcript.count) characters. Press Command-V to paste.")
+            let message = self.dictationSurface == .indicator
+                ? "Copied \(transcript.count) characters — press ⌘V to paste."
+                : "Copied \(transcript.count) characters. Press Command-V to paste."
+            self.reportDictation(message, outcome: .copied)
         }
     }
 
     /// Lowers the output once the microphone is live and restores it as soon as listening ends,
     /// whether dictation finished, was cancelled or failed. Transcription after release runs at
     /// the restored level. Volume problems never interrupt dictation; they are only reported.
+    /// A recognition failure while the indicator is listening has no completion callback, so it
+    /// is reported here rather than leaving the indicator stuck on Listening.
     private func dictationPhaseChanged(_ phase: SpeechDictation.Phase) {
         dictationVolume.onProblem = { [weak self] problem in self?.noteDictationVolumeProblem(problem) }
         let problem = phase == .listening
             ? (config.dictationLowersVolume ? dictationVolume.lower() : nil)
             : dictationVolume.restore()
         if let problem { noteDictationVolumeProblem(problem) }
+        if case .failed(let reason) = phase, dictationSurface == .indicator, dictationIndicator.isListening {
+            reportDictation(reason, outcome: .failed)
+        }
     }
 
     /// Shows a volume problem now and keeps it for the dictation's final message.
     private func noteDictationVolumeProblem(_ problem: String) {
+        if dictationSurface == .indicator {
+            dictationIndicator.note(volumeProblem: problem)
+            return
+        }
         dictationVolumeProblem = problem
         actionFeedback = [actionFeedback, problem].compactMap { $0 }.joined(separator: " ")
     }
 
-    /// Sets a dictation's final message, followed by any volume problem it ran into.
-    private func reportDictation(_ message: String) {
-        actionFeedback = [message, dictationVolumeProblem].compactMap { $0 }.joined(separator: " ")
+    /// Sets a dictation's final message, followed by any volume problem it ran into. The
+    /// indicator adds its own recorded volume problem.
+    private func reportDictation(_ message: String, outcome: DictationIndicatorModel.Outcome) {
+        guard !dictationReported else { return }
+        dictationReported = true
+        if dictationSurface == .indicator {
+            dictationIndicator.finish(message, outcome: outcome)
+        } else {
+            actionFeedback = [message, dictationVolumeProblem].compactMap { $0 }.joined(separator: " ")
+        }
         dictationVolumeProblem = nil
     }
 

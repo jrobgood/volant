@@ -1,6 +1,7 @@
 # Dictation typed at the cursor — design
 
-Design only, October 11, 2026. Nothing here is implemented. It extends the shipped dictation
+Design only, October 11, 2026. Nothing here is implemented except the non-key hotkey indicator
+and the temporary Escape key, described under "Hotkey indicator (implemented)". It extends the shipped dictation
 (`Volant/Dictation/SpeechDictation.swift`, `docs/ai-connections.md`), which copies the transcript
 and leaves Command-V to the owner. The owner has decided to add an Accessibility helper and asked
 whether it can run only for people who turn the feature on.
@@ -157,18 +158,69 @@ Behavior by surface, all to be measured in Phase 1: native Cocoa, Safari or Chro
 `contenteditable` editors, Electron (Slack, VS Code), Terminal, iTerm2 and Ghostty, and Microsoft
 Office. Undo after a paste should be a single step. This is unverified for each app.
 
-**Focus.** The launcher is a non-activating panel, but `showForDictation()` makes it the key window,
-so a posted Command-V would land in Volant's own search field. In insert mode, dictation shows a
-**non-key** indicator: the panel or a small HUD with `canBecomeKey == false`, ordered front without
-becoming key, with a Cancel button that works on click. Focus stays in the target app throughout.
+**Focus.** The hotkey used to show the launcher (`showForDictation()`), which made it the key
+window, so a posted Command-V would have landed in Volant's own search field. Hotkey dictation now
+shows the non-key indicator described under "Hotkey indicator (implemented)" instead, and focus
+stays in the target app throughout. Insert mode reuses that indicator.
+
+## Hotkey indicator (implemented)
+
+Implemented October 11, 2026, ahead of the Accessibility helper, because it is useful on its own:
+the Dictate Text hotkey no longer shows the launcher. Dictation started with `talk` inside the
+launcher keeps its in-launcher status line.
+
+- **Window.** `DictationIndicatorPanel` (`Volant/Dictation/DictationIndicatorPanel.swift`) is a
+  borderless `.nonactivatingPanel` whose `canBecomeKey` and `canBecomeMain` are false. It ignores
+  the mouse, sits at `.statusBar` level, joins all Spaces and full-screen apps
+  (`.canJoinAllSpaces`, `.fullScreenAuxiliary`, `.stationary`, `.ignoresCycle`) and is shown with
+  `orderFrontRegardless`. Nothing on this path calls `makeKey`, `NSApp.activate` or the launcher, so
+  the frontmost app keeps focus. It appears 72 points above the bottom of the visible frame of the
+  screen under the pointer, or the main screen, and is drawn on the theme's window background with
+  a separator border so light, dark and palette themes stay legible in a window that is never key.
+  There is no click target: a Cancel button would need mouse events, and Escape and the hotkey
+  already cover stopping.
+- **States.** `DictationIndicatorModel` (`Volant/Dictation/DictationIndicator.swift`): Listening,
+  with the stop hint ("Release or press ⌥Space to stop. Escape cancels."), then the live
+  transcript, then Transcribing… while the analyzer finishes, then a result that hides after two
+  seconds and fades over a quarter second: "Copied N characters — press ⌘V to paste.", "Nothing was
+  heard.", "Dictation cancelled.", or the failure's reason. A volume problem from
+  `DictationVolumeDuck` is shown while dictation runs and appended to the result; one that arrives
+  after the result extends it. A recognition failure while listening, which has no completion
+  callback, is reported from the phase change so the indicator never stays on Listening.
+- **Live text.** `SpeechDictation.transcript` already carried settled plus volatile results. The
+  indicator keeps only its last 120 characters, cut at a word boundary with a leading ellipsis. It is
+  held in memory, never logged or persisted, and cleared when the result shows.
+- **Escape.** While the indicator is listening, `DictationEscapeKey` registers unmodified Escape
+  (`kVK_Escape`, no modifiers) through `HotKeyCenter`, and unregisters it the moment the indicator
+  leaves Listening, whether dictation finished, was cancelled or failed, and before hotkeys are
+  re-registered after a settings change. Carbon hotkeys need no Accessibility or Input Monitoring
+  grant. `RegisterEventHotKey` returned `noErr` for unmodified Escape on macOS 27 in an unsigned,
+  unsandboxed probe that registered and immediately unregistered it; delivery of a real keypress to
+  the signed, sandboxed app is not yet measured. While registered, Escape is consumed system-wide,
+  so the frontmost app does not see it for those seconds. If registration fails, for example
+  because another app holds Escape, the hint leaves Escape out and the dictation hotkey still stops.
+  Escape held together with the hotkey's modifiers does not match the unmodified registration.
+- **Clipboard.** Unchanged: the transcript is copied exactly as before, and nothing is typed.
+- **Evidence.** `VolantTests/DictationIndicatorTests` covers the state machine with an injected
+  clock (listening, partial text, transcribing, result, hidden; cancel; failure; volume problems
+  during and after a result; a new dictation cancelling an old hide; the 120-character bound) and
+  the Escape registration lifecycle with injected register and unregister closures.
+  `tools/check-dictation-hud.sh` compiles the production indicator view and panel, shows it while
+  the process is in the background and then over another key window, and asserts that no Volant
+  window becomes key or main, the other window keeps key status and first responder, and a
+  background process is not activated. It writes
+  `/tmp/volant-launcher-dictation-hud-<state>-<light|dark>.jpg` for `listening`, `partial`,
+  `transcribing`, `copied`, `failed-volume` and `cancelled`, collected by the Tart UI run. The
+  fixture never registers a hotkey or starts the microphone. Real hotkey and Escape delivery,
+  full-screen Spaces placement and live recognition in the signed installed app are separate
+  evidence.
 
 ## Trigger keys
 
 - **Phase 1:** the existing Carbon `talkHotKey`, hold or tap, unchanged. Escape cannot reach a
-  panel that is not key. Phase 0 tests registering Escape with `RegisterEventHotKey` without
-  modifiers, only while listening, from the main app. Carbon would consume the key system-wide for
-  those seconds, with no permission needed. If that fails, Phase 1 cancels with the indicator's
-  Cancel button.
+  panel that is not key, so the hotkey indicator already registers unmodified Escape with
+  `RegisterEventHotKey` only while it is listening (see "Hotkey indicator (implemented)"). Delivery
+  of that Escape to the signed, sandboxed app still needs Phase 0's measurement.
 - **Phase 2: Globe (fn) or a single modifier** (left or right Option, Command or Control) as the
   hold-to-talk trigger. Carbon cannot register a modifier on its own, so the helper runs a tap.
   - Base tap: `CGEvent.tapCreate(tap: .cgSessionEventTap, …, eventsOfInterest: flagsChanged only)`.
@@ -339,7 +391,8 @@ grant" in `docs/competitors.md`, `docs/cross-platform-core.md` and the website, 
    revoke in System Settings with the feature on.
 4. Phase 2 on the owner's MacBook keyboard and an external keyboard: Globe set to Do Nothing and to
    Show Emoji, a right-Option trigger, and Option-arrow chording without starting dictation.
-5. Light and dark renders of the Settings rows and the non-key indicator from compiled fixtures.
+5. Light and dark renders of the Settings rows from compiled fixtures (the indicator's renders
+   already exist, see "Hotkey indicator (implemented)").
    Live permission flows are separate evidence.
 
 Host UI runs need an agreed window with the owner. Routine checks run in the VM.
@@ -384,8 +437,7 @@ Host UI runs need an agreed window with the owner. Routine checks run in the VM.
      `JoinExistingSession` and `RunLoopType = NSRunLoop` in its `XPCService` dictionary.
    - `status`, `requestAccessibility`, `beginSession`, `insert` and `endSession`.
    - Paste with markers and restore, plus the secure-input and secure-field refusals.
-   - Settings toggle and permission rows; non-key dictation indicator; Escape through Carbon or a
-     Cancel button.
+   - Settings toggle and permission rows. The non-key indicator and Carbon Escape already exist.
    - Fallback to copying with a reason; the CI check confining Accessibility APIs to the helper.
    - Documentation and marketing updates.
 2. **Globe or single-modifier trigger, plus Return and Escape.** The helper's `flagsChanged` tap, the

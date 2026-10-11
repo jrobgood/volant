@@ -72,6 +72,14 @@ final class HotKeyCenter {
         return status == noErr
     }
 
+    /// Removes one registration, for hotkeys that exist only for a short time such as the
+    /// dictation Escape key. Unknown identifiers are ignored.
+    func unregister(_ id: UInt32) {
+        if let ref = refs.removeValue(forKey: id) { UnregisterEventHotKey(ref) }
+        handlers[id] = nil
+        releaseHandlers[id] = nil
+    }
+
     func unregisterAll() {
         for ref in refs.values { UnregisterEventHotKey(ref) }
         refs.removeAll()

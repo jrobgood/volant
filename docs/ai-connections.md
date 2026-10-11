@@ -109,15 +109,20 @@ through LaunchServices so nothing was inherited from a terminal.
 
 `talk` toggles: Return starts listening, Return stops and copies. The dedicated hotkey does both
 shapes — hold it for longer than 0.4 s and releasing stops, tap it and it keeps listening until the
-next tap. The panel shows a live microphone indicator and the text heard so far, so dictation is
-never running invisibly: while listening or transcribing, the panel stays up through focus loss
-instead of hiding with the microphone still live.
+next tap. From `talk`, the panel shows a live microphone indicator and the text heard so far, and
+stays up through focus loss while listening or transcribing. From the hotkey (October 11, 2026),
+the launcher is not shown: a small non-activating indicator near the bottom of the screen shows
+Listening, the most recent heard text, Transcribing… and the result, while the app being typed in
+stays frontmost and focused. See
+[the hotkey indicator](dictation-at-cursor-design.md#hotkey-indicator-implemented). Either way,
+dictation never runs invisibly.
 
 The hotkey is recorded in Settings → General → Dictate Text and is unset until the owner picks one.
 It joins the same duplicate checks as the other global shortcuts and app shortcuts, so one
 combination cannot be bound twice. Escape while listening cancels and discards the transcript
 without touching the clipboard; once transcription has started it runs to the end, because the
-stop completion would otherwise still copy.
+stop completion would otherwise still copy. For hotkey dictation, Escape is a Carbon hotkey
+registered only while listening, so it works while another app is frontmost.
 
 While listening, the default output is lowered to a fifth of its level and restored when listening
 ends; Settings → General → Dictation → Lower volume while dictating turns it off. See
@@ -162,7 +167,8 @@ check passed while the real feature crashed.
 
 Live dictation through the signed installed app, the accuracy of long transcripts, locale
 selection on a Mac whose language the engine does not support, and behaviour when a microphone is
-removed mid-session. The native fixtures do not render the dictation indicator.
+removed mid-session. `tools/check-dictation-hud.sh` renders the hotkey indicator from fictional
+states; it does not render the in-launcher status line, press a real hotkey or Escape, or record.
 
 ## Attaching notes and clipboard text with @ — September 30, 2026
 

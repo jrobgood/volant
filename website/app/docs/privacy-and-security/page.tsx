@@ -107,7 +107,9 @@ export default function PrivacyAndSecurity() {
               <td>
                 For on-device dictation with <code>talk</code>, on macOS 26 or
                 later. Audio stays on the Mac; the transcript is copied for you
-                to paste.
+                to paste. From the next release, the Dictate Text shortcut
+                shows a small indicator instead of the launcher, so the app you
+                are typing in keeps focus.
               </td>
             </tr>
             <tr>

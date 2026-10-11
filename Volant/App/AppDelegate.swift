@@ -33,6 +33,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }()
 
     private let currencyRates = CurrencyRatesStore()
+    /// The floating indicator for hotkey dictation, created on first use.
+    private lazy var dictationIndicator = DictationIndicatorPanel(model: panel.model.dictationIndicator)
+    private let dictationEscape = DictationEscapeKey(register: { HotKeyCenter.shared.register($0, handler: $1) },
+                                                     unregister: { HotKeyCenter.shared.unregister($0) })
+    private var dictationIndicatorObserver: AnyCancellable?
     private let updater = AppUpdater()
     private var statusItem: NSStatusItem?
     private var memoryCheck: MemoryCheck?
@@ -141,6 +146,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         index.start()
         clipboardMonitor.start()
         registerHotKeys()
+        dictationIndicatorObserver = panel.model.dictationIndicator.$phase.removeDuplicates().sink { [weak self] phase in
+            self?.updateDictationEscape(listening: phase == .listening)
+        }
         if let i = CommandLine.arguments.firstIndex(of: "--run-extension"), CommandLine.arguments.indices.contains(i + 1) {
             let manager = ExtensionManager()
             manager.onLog = { print("log: \($0)") }
@@ -227,6 +235,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func registerHotKeys() {
+        updateDictationEscape(listening: false)
         HotKeyCenter.shared.unregisterAll()
         var failures: [String] = []
         if let combo = KeyCombo(parsing: config.summonHotKey) {
@@ -264,6 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if !state.registrationErrors.contains(message) { state.registrationErrors.append(message) }
         }
         settingsPanel.state.registrationErrors = failures
+        updateDictationEscape(listening: panel.model.dictationIndicator.isListening)
     }
 
     private func installApplicationMenu() {
@@ -317,8 +327,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         dictationPressedAt = Date()
-        panel.showForDictation()
-        model.toggleDictation(stopHint: "release or press \(KeyCombo.display(config.talkHotKey)) to stop")
+        _ = dictationIndicator
+        model.toggleDictation(stopHint: "Release or press \(KeyCombo.display(config.talkHotKey)) to stop", surface: .indicator)
+    }
+
+    /// Holds unmodified Escape as a Carbon hotkey only while the indicator is listening, so Escape
+    /// cancels without Volant taking focus, and tells the indicator whether to mention it.
+    private func updateDictationEscape(listening: Bool) {
+        let model = panel.model
+        model.dictationIndicator.escapeCancels = dictationEscape.update(listening: listening) { [weak model] in
+            model?.cancelDictation()
+        }
     }
 
     private func endDictationFromHotkey() {

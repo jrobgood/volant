@@ -232,13 +232,6 @@ final class LauncherPanel: NSPanel, NSWindowDelegate {
         model.searchFocusRequest = UUID()
     }
 
-    /// Dictation shows the panel so the live transcript is visible, without disturbing a query
-    /// already in progress.
-    func showForDictation() {
-        if NSApp.modalWindow != nil { return }
-        if !isVisible { toggle() } else { makeKeyAndOrderFront(nil) }
-    }
-
     func showAgents() {
         if !isVisible { toggle() }
         model.query = "agents"
