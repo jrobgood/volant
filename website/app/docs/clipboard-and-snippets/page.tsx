@@ -92,13 +92,6 @@ export default function ClipboardAndSnippets() {
         <a href="/docs/configuration">config.json</a> without touching anything
         else there, and it is ready to use straight away.
       </p>
-      <div className="docs-note">
-        <p>
-          Creating snippets and quicklinks in the launcher arrives in the next
-          release. Volant 0.2.4 reads them from config.json, Raycast import, and
-          iCloud settings sync.
-        </p>
-      </div>
 
       <h3>Placeholders</h3>
       <div className="docs-table-scroll">

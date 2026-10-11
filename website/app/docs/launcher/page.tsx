@@ -135,8 +135,7 @@ export default function Launcher() {
         go back. The name cannot repeat a quicklink, snippet keyword, alias, or
         built-in command, and the URL must use one of the schemes above. The
         quicklink is appended to <code>quicklinks</code> in config.json and
-        works at once. This arrives in the next release; Volant 0.2.4 reads
-        quicklinks from config.json.
+        works at once.
       </p>
 
       <h2>The footer tells you the action</h2>

@@ -82,9 +82,9 @@ export default function SystemControl() {
         and outputs that are already nearly silent are left alone, and mute is
         never changed. If sound moves to another output mid-dictation, the
         original output is restored right away and the new one isn’t touched.
-        A restore that fails is reported in the launcher; from the next
-        release, dictation started with the Dictate Text shortcut reports it in
-        its small floating indicator instead. Turn this off with{' '}
+        A restore that fails is reported in the launcher, or, for dictation
+        started with the Dictate Text shortcut, in its small floating
+        indicator. Turn this off with{' '}
         <strong>Lower volume while dictating</strong> in Settings → General.
       </p>
       <div className="docs-note">

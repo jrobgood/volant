@@ -24,8 +24,8 @@ export default function PrivacyAndSecurity() {
       <p className="docs-lede">
         There is no Volant account and no telemetry. Your notes, clipboard
         history, and learned ranking stay on your Mac. You choose what to share
-        with AI. Selected settings can optionally sync through iCloud in the
-        next release.
+        with AI. Selected settings can optionally sync between your Macs through
+        iCloud.
       </p>
 
       <h2>The main app has no network access</h2>
@@ -107,9 +107,9 @@ export default function PrivacyAndSecurity() {
               <td>
                 For on-device dictation with <code>talk</code>, on macOS 26 or
                 later. Audio stays on the Mac; the transcript is copied for you
-                to paste. From the next release, the Dictate Text shortcut
-                shows a small indicator instead of the launcher, so the app you
-                are typing in keeps focus.
+                to paste. The Dictate Text shortcut shows a small indicator
+                instead of the launcher, so the app you are typing in keeps
+                focus.
               </td>
             </tr>
             <tr>
