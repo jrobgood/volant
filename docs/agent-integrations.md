@@ -346,6 +346,15 @@ agent helper's Keychain access, through the caller's security session it joins, 
 has not been checked on a Mac. Codex keeps its login in files under `CODEX_HOME` unless configured
 otherwise. There is no automatic routing between accounts, and no App Intent chooses one.
 
+**Rework — October 11, 2026.** This section was first written against a stack that also added
+isolated git workspaces and Send to Several with headless tasks. Those were not merged, so the
+account change was reworked to stand on several conversations alone: the helper has no isolated
+start or `checkAccount` call, a resume record carries no workspace, and the Limited usage mark and
+its account-labelled status line, which only Send to Several showed, were dropped. `ACPConnection`
+keeps an injectable agent resolver so the ACP check can run starts against fictional install
+locations, and `ACPModel` gains an injectable start (`connector`) and `handleRead`, the path each
+`acpRead(after:)` reply takes, so tests drive conversations without a helper.
+
 Evidence: in Core, `ACPAccountProfileTests` cover the one variable each provider reads, profile and
 label validation, the per-provider choice, adding and removing accounts, and reading and saving both
 settings beside unknown fields; `ACPResumeRecordTests` adds a case for the account folder on a
