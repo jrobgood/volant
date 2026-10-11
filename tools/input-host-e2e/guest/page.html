@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>len=0</title>
+<textarea id="t" rows="6" cols="60" autofocus></textarea>
+<script>
+  const t = document.getElementById('t');
+  t.addEventListener('input', () => { document.title = 'len=' + t.value.length + ' value=' + t.value; });
+  window.addEventListener('load', () => t.focus());
+</script>

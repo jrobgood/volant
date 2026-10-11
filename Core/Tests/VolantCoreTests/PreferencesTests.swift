@@ -30,6 +30,34 @@ final class PreferencesTests: XCTestCase {
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         XCTAssertNotNil(object["future"])
     }
+    /// Dictation copies unless the owner chooses typing; both choices stay on this Mac, patch
+    /// narrowly, and an unknown output read from a newer version falls back to copying.
+    func testDictationOutputDefaultsToCopyAndPatchesNarrowly() throws {
+        let defaults = try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8))
+        XCTAssertEqual(defaults.dictationOutput, .copy)
+        XCTAssertTrue(defaults.dictationTypesWhileSpeaking)
+        XCTAssertFalse(SettingsSync.keys.contains("dictationOutput"))
+        XCTAssertFalse(SettingsSync.keys.contains("dictationTypesWhileSpeaking"))
+        let unknown = try JSONDecoder().decode(Preferences.self, from: Data(#"{"dictationOutput":"teleport","showInDock":false}"#.utf8))
+        XCTAssertEqual(unknown.dictationOutput, .copy)
+        XCTAssertFalse(unknown.showInDock, "An unknown output does not reset other settings")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try Data(#"{"dictationLowersVolume":false,"future":{"keep":1}}"#.utf8).write(to: url)
+        try Preferences.updateDictationOutput(.type, at: url)
+        try Preferences.updateBoolean("dictationTypesWhileSpeaking", value: false, at: url)
+        let data = try Data(contentsOf: url)
+        let config = try JSONDecoder().decode(Preferences.self, from: data)
+        XCTAssertEqual(config.dictationOutput, .type)
+        XCTAssertFalse(config.dictationTypesWhileSpeaking)
+        XCTAssertFalse(config.dictationLowersVolume)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(object["dictationOutput"] as? String, "type")
+        XCTAssertNotNil(object["future"])
+        try Preferences.updateDictationOutput(.copy, at: url)
+        XCTAssertEqual(try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: url)).dictationOutput, .copy)
+    }
+
     /// Dictation lowers the output unless the owner turns it off, stays per Mac, and patches narrowly.
     func testDictationVolumeSettingDefaultsOnAndPatchesNarrowly() throws {
         XCTAssertTrue(try JSONDecoder().decode(Preferences.self, from: Data("{}".utf8)).dictationLowersVolume)

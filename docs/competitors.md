@@ -26,7 +26,7 @@ Reviewed 2026-09-14 from vicinae.com, docs.vicinae.com, and the `vicinaehq/vicin
 ### Where Volant is ahead
 
 - **Security posture.**
-  - Volant: App Sandbox on, no network entitlement, no telemetry, and no Accessibility or Input Monitoring grant.
+  - Volant: App Sandbox on, no network entitlement, no telemetry, no Input Monitoring grant, and no Accessibility grant unless the owner chooses dictation typed at the cursor, which only the separate input helper uses.
   - Vicinae is not sandboxed: its entitlements are Apple Events, Calendars, and Contacts only. Paste, snippets, window management, the menu bar, and selection services use Accessibility APIs, and snippet expansion uses a keyboard event tap.
 - **Telemetry and network.**
   - Vicinae enables anonymous system-info telemetry by default (`telemetry.system_info = true`). A one-hour timer sends at most once a day to the Vicinae API. The payload holds a random user ID, CPU architecture, OS and kernel version, locale, screen resolutions and scale, desktop, and app version.
@@ -91,7 +91,7 @@ Reviewed 2026-09-19. Pricing and feature gating from raycast.com and the Septemb
 
 - **Footprint.** Roughly 76 MB across two processes against 516 MB across seven, measured the same way on the same machine.
 - **Cold start.** Volant's median fresh-process window publication was **998.2 ms against Raycast's 1068.0 ms**, about 70 ms earlier.
-- **Security posture.** App Sandbox on, no network entitlement, no telemetry, no account, and no Accessibility or Input Monitoring grant. Raycast requires an account for its paid tier and embeds a browser engine and a Node runtime.
+- **Security posture.** App Sandbox on, no network entitlement, no telemetry, no account, no Input Monitoring grant, and no Accessibility grant unless the owner opts into typing dictation at the cursor (a separate helper). Raycast requires an account for its paid tier and embeds a browser engine and a Node runtime.
 - **Price and license.** Free and MIT, with no gated features, against $8/month for clipboard history, sync, translation, and unlimited notes.
 - **Agents.** Herdr pane discovery, focus, and pinned status, plus native ACP conversations. Raycast has no equivalent.
 
@@ -382,7 +382,7 @@ Issue #65 is the place that decision belongs, and Tuna is evidence rather than a
 
 Two positions are defensible because they are structural rather than a matter of effort.
 
-1. **A security posture the operating system enforces rather than one the vendor promises.** Every competitor reviewed runs unsandboxed and executes extension code with full process privileges — Node for the Raycast-compatible ones, native Swift in-process for Tuna — and ships some form of telemetry. Volant is sandboxed, holds no network entitlement, requests no Accessibility or Input Monitoring grant, encrypts clipboard history by default, sends no telemetry, and is open source as shipped. Each of those is checkable against entitlements and source, which is precisely what the competitors cannot offer.
+1. **A security posture the operating system enforces rather than one the vendor promises.** Every competitor reviewed runs unsandboxed and executes extension code with full process privileges — Node for the Raycast-compatible ones, native Swift in-process for Tuna — and ships some form of telemetry. Volant is sandboxed, holds no network entitlement, requests no Input Monitoring grant and no Accessibility grant unless the owner opts into typing dictation at the cursor, encrypts clipboard history by default, sends no telemetry, and is open source as shipped. Each of those is checkable against entitlements and source, which is precisely what the competitors cannot offer.
 2. **Agent workflows.** None of Raycast, Vicinae, SuperCmd or Tuna has Herdr pane discovery or native ACP conversations. This is the only capability Volant has that the category does not, and the competitive review reinforces that it is the wedge rather than a side feature. JetBrains Air now does ACP orchestration too, from the IDE and the cloud. It is not a launcher and does not reach agents already running in terminal panes, so the wedge narrows to answering and steering agents from anywhere on the desktop, locally, the moment one needs you. Air's agent discovery and per-session change tracking are the table stakes to meet there.
 
 A shared weakness worth using: both Vicinae and SuperCmd require macOS 26. Volant runs on macOS 15 and still ships Intel builds.

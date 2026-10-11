@@ -8,7 +8,7 @@ from pathlib import Path
 
 UI_PATTERNS = (
     "Volant/**/*View.swift", "Volant/**/*Panel.swift", "Volant/**/*WindowController.swift",
-    "Volant/Search/AppIndex.swift", "Volant/Search/IconCache.swift", "Volant/Files/FileSearch.swift", "Volant/Notes/NotesStore.swift", "Volant/Clipboard/*", "Volant/Extensions/*", "Core/Sources/VolantCore/Extensions/*", "VolantExtensionHost/*", "extensions/*", "Volant/Panel/*", "Core/Sources/VolantCore/Calculator/TimeCalculator.swift", "Volant/Usage/UsageStore.swift", "Volant/Shortcuts/*", "Core/Sources/VolantCore/Shortcuts/*", "Volant/Emoji/*", "Volant/Translation/*", "Volant/Dictionary/*", "Volant/Dictation/DictationIndicator*.swift", "Volant/HotKeys/DictationEscapeKey.swift", "Volant/Settings/Shortcut*.swift", "Volant/Settings/GlobalShortcutRow.swift",
+    "Volant/Search/AppIndex.swift", "Volant/Search/IconCache.swift", "Volant/Files/FileSearch.swift", "Volant/Notes/NotesStore.swift", "Volant/Clipboard/*", "Volant/Extensions/*", "Core/Sources/VolantCore/Extensions/*", "VolantExtensionHost/*", "extensions/*", "Volant/Panel/*", "Core/Sources/VolantCore/Calculator/TimeCalculator.swift", "Volant/Usage/UsageStore.swift", "Volant/Shortcuts/*", "Core/Sources/VolantCore/Shortcuts/*", "Volant/Emoji/*", "Volant/Translation/*", "Volant/Dictionary/*", "Volant/Dictation/DictationIndicator*.swift", "Volant/Dictation/DictationTyping*.swift", "Volant/HotKeys/DictationEscapeKey.swift", "Volant/Settings/Shortcut*.swift", "Volant/Settings/GlobalShortcutRow.swift",
     "Core/Sources/VolantCore/Settings/*", "Core/Sources/VolantCore/AI/*", "Volant/Settings/AppBindingEditor.swift", "Volant/Settings/AppBindingRow.swift", "Volant/HotKeys/KeyCombo.swift", "Volant/Settings/StatusMenu.swift", "Volant/Settings/SettingsStyle.swift", "Volant/Settings/ICloudSettingsSync.swift", "Volant/Settings/CryptoKeySection.swift",
     "Volant/Notes/LiveMarkdown*.swift", "Volant/Agents/*Model.swift", "Volant/Agents/HerdrFooterStatus.swift", "Volant/Agents/HerdrQueryHeader.swift", "Volant/Agents/ChatContextPicker.swift",
     "Volant/App/main.swift", "Volant/App/AppDelegate.swift", "Volant/Resources/*", "Volant/Appearance/*",
@@ -17,7 +17,7 @@ UI_PATTERNS = (
     "tools/check-launcher.sh", "tools/check-launcher-actions.sh", "tools/check-dictation-hud.sh", "tools/run-bounded-check.py", "tools/test-ui-vm.py", "tools/preview-settings.sh", "tools/render-*.sh",
     "VolantTests/LiveMarkdownTests.swift", "VolantTests/NotesStoreTests.swift",
 )
-NATIVE_PATTERNS = ("Volant/*", "VolantTests/*", "VolantAgentHost/*", "VolantExtensionHost/*", "VolantAIHost/*",
+NATIVE_PATTERNS = ("Volant/*", "VolantTests/*", "VolantAgentHost/*", "VolantExtensionHost/*", "VolantAIHost/*", "VolantInputHost/*",
                    "Shared/*", "Core/*", "extensions/*", "Scripts/*", "tools/*", "project.yml", ".swiftlint.yml", ".github/workflows/*")
 
 

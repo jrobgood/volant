@@ -109,7 +109,8 @@ export default function PrivacyAndSecurity() {
                 later. Audio stays on the Mac; the transcript is copied for you
                 to paste. The Dictate Text shortcut shows a small indicator
                 instead of the launcher, so the app you are typing in keeps
-                focus.
+                focus. From the next release, you can choose to have dictation
+                typed at the cursor instead (see Accessibility below).
               </td>
             </tr>
             <tr>
@@ -136,16 +137,29 @@ export default function PrivacyAndSecurity() {
 
       <h2>Permissions Volant does not ask for</h2>
       <p>
-        <strong>No Accessibility grant. No Input Monitoring grant.</strong>{' '}
-        Global hotkeys use Carbon&rsquo;s hotkey registration, which needs no
-        permission at all.
+        <strong>No Input Monitoring grant.</strong> Global hotkeys use
+        Carbon&rsquo;s hotkey registration, which needs no permission at all.
       </p>
       <p>
-        This is also why version 0.1 copies results to the clipboard instead of
-        pasting them: no keystroke is ever synthesized. It is the reason
-        paste-in-place, window management, and system-wide text expansion are
-        absent — each would require that grant, and they were ruled out rather
-        than quietly added.
+        <strong>No Accessibility grant unless you choose Type at the cursor.</strong>{' '}
+        The downloadable app never asks for it: results are copied to the
+        clipboard instead of pasted, so no keystroke is ever synthesized.
+        Window management and system-wide text expansion stay absent for the
+        same reason.
+      </p>
+      <p>
+        From the next release, Settings → General → Dictation lets you choose{' '}
+        <strong>Type at the cursor</strong> instead of{' '}
+        <strong>Copy to clipboard</strong>. Only then does Volant start a
+        separate helper inside the app, which asks macOS once for Accessibility
+        (System Settings lists it as Volant). The helper can only type text you
+        just dictated into the app that was in front when you started; it has
+        no command for reading what is on screen or typing anything else. It
+        never reads the text of the field it types into. It refuses to type
+        into password fields or while secure input is on, and copies instead.
+        The main app stays sandboxed and never uses Accessibility itself.
+        Choosing Copy to clipboard again stops the helper; macOS keeps the grant
+        until you turn Volant off in Privacy &amp; Security → Accessibility.
       </p>
 
       <h2>Your data at rest</h2>

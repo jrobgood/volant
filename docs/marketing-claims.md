@@ -25,9 +25,15 @@ The public artifact is Volant 0.2.5, build 13 (October 11, 2026; build commit an
 | Lock, sleep, screen saver, restart/shutdown/logout | Yes | #102; native fixtures, sandbox probes, owner checked in the installed app | New in 0.2.0; OS confirmation for disruptive actions |
 | Opt-in iCloud settings sync | Yes | #153 entitlement and Developer ID profile, present in the notarized 0.2.0 DMG; owner verified settings syncing between two Macs on October 7, 2026; quota and account-change notifications unverified | New in 0.2.0; selected settings only, no notes/history/keys |
 
+Merged after 0.2.4, not yet in a downloadable build:
+
+| Story | In 0.2.4 | Evidence and limits | Website treatment |
+| --- | --- | --- | --- |
+| Dictation typed at the cursor (opt-in output; while speaking or when finished) | No, merged later | Fake-client unit tests; a VM run of the real Developer ID signed helper with a stand-in container (TextEdit through Accessibility, Chrome through the paste fallback, password fields refused, app change refused, Return finishes). Live speech, the real installed app, macOS 26/27, Electron and terminals other than Terminal are unverified (docs/dictation-at-cursor-design.md) | "From the next release"; never "no Accessibility", only "no Accessibility unless you choose Type at the cursor" |
+
 ## Privacy language
 
-No Volant account or telemetry. Notes and encrypted clipboard history remain local. Submitted AI prompts and selected context reach the chosen provider/server. Keys stay in Keychain. Updates, HTTP AI and rates use separate helpers; opt-in iCloud uses Apple's system service. Avoid blanket “everything stays on your Mac,” “entirely offline,” or “zero dependencies” claims.
+No Volant account or telemetry. Notes and encrypted clipboard history remain local. Submitted AI prompts and selected context reach the chosen provider/server. Keys stay in Keychain. Updates, HTTP AI and rates use separate helpers; opt-in iCloud uses Apple's system service. Avoid blanket “everything stays on your Mac,” “entirely offline,” or “zero dependencies” claims. Once typing at the cursor ships, say “no Accessibility unless you choose Type at the cursor”: the main app stays sandboxed and never uses Accessibility, and only the separate input helper does, listed as Volant in System Settings, after the owner picks that output.
 
 ## Imagery
 

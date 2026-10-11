@@ -10,7 +10,7 @@ import Foundation
 final class DictationIndicatorModel: ObservableObject {
     /// How a dictation ended, which picks the result's symbol.
     enum Outcome: Equatable {
-        case copied, nothing, cancelled, failed
+        case copied, typed, nothing, cancelled, failed
     }
 
     enum Phase: Equatable {
@@ -33,6 +33,8 @@ final class DictationIndicatorModel: ObservableObject {
     @Published private(set) var stopHint = ""
     /// Whether Escape is registered to cancel while listening; the hint mentions it only then.
     @Published var escapeCancels = false
+    /// Whether Return is registered to finish while listening, which happens only when typing.
+    @Published var returnFinishes = false
     /// A volume problem met during this dictation, shown while it runs and added to the result.
     @Published private(set) var volumeProblem: String?
 

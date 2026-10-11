@@ -114,7 +114,7 @@ struct DictationIndicatorSymbol: View {
     private var tinted: Bool {
         switch phase {
         case .listening: return true
-        case .result(_, let outcome): return outcome == .copied
+        case .result(_, let outcome): return outcome == .copied || outcome == .typed
         default: return false
         }
     }
@@ -123,7 +123,7 @@ struct DictationIndicatorSymbol: View {
         switch phase {
         case .hidden, .listening: return "mic.fill"
         case .transcribing: return "waveform"
-        case .result(_, .copied): return "checkmark.circle.fill"
+        case .result(_, .copied), .result(_, .typed): return "checkmark.circle.fill"
         case .result(_, .failed): return "exclamationmark.triangle.fill"
         case .result: return "mic.slash"
         }
@@ -158,11 +158,21 @@ struct DictationIndicatorText: View {
     private var detail: String? {
         var lines: [String] = []
         if model.phase == .listening {
-            lines.append(model.escapeCancels ? model.stopHint + ". Escape cancels." : model.stopHint + ".")
+            lines.append(model.stopHint + Self.keyHint(escape: model.escapeCancels, return: model.returnFinishes))
         }
         if model.phase == .listening || model.phase == .transcribing, let problem = model.volumeProblem {
             lines.append(problem)
         }
         return lines.isEmpty ? nil : lines.joined(separator: " ")
+    }
+
+    /// The end of the stop hint, naming only the keys that are actually registered.
+    static func keyHint(escape: Bool, return finishes: Bool) -> String {
+        switch (finishes, escape) {
+        case (true, true): return ". Return finishes, Escape cancels."
+        case (true, false): return ". Return finishes."
+        case (false, true): return ". Escape cancels."
+        case (false, false): return "."
+        }
     }
 }

@@ -19,7 +19,11 @@ final class SettingsWindowController: NSWindowController {
     private let onChange: () -> Void
     private let configURL: URL
 
-    init(configURL: URL = Preferences.configURL, acp: ACPModel = ACPModel(), openAI: @escaping (AIConfiguration) -> Void = { _ in }, onChange: @escaping () -> Void) {
+    /// `dictationAccess` defaults to a real helper connection, which connects only when typing is
+    /// chosen; fixtures pass one with a fake client.
+    init(configURL: URL = Preferences.configURL, acp: ACPModel = ACPModel(),
+         dictationAccess: DictationTypingAccess = DictationTypingAccess(client: InputHostConnection()),
+         openAI: @escaping (AIConfiguration) -> Void = { _ in }, onChange: @escaping () -> Void) {
         self.onChange = onChange
         self.configURL = configURL
         let window = SettingsPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 540),
@@ -33,7 +37,7 @@ final class SettingsWindowController: NSWindowController {
         window.setFrameAutosaveName("VolantSettings")
         super.init(window: window)
         let hosting = NSHostingView(rootView: ThemedRoot(paletteText: false) {
-            SettingsView(state: state, acp: acp, configURL: configURL, onChange: onChange, openAI: openAI,
+            SettingsView(state: state, acp: acp, dictationAccess: dictationAccess, configURL: configURL, onChange: onChange, openAI: openAI,
                          chooseAIProject: { [weak self] completion in self?.chooseAIProject(completion) },
                          importRaycast: { [weak self] in self?.showRaycastImport() })
                 .frame(minWidth: 680, idealWidth: 760, maxWidth: .infinity, minHeight: 500, idealHeight: 540, maxHeight: .infinity)
@@ -73,6 +77,7 @@ final class SettingsWindowController: NSWindowController {
 private struct SettingsView: View {
     @ObservedObject var state: SettingsState
     @ObservedObject var acp: ACPModel
+    let dictationAccess: DictationTypingAccess
     let configURL: URL
     let onChange: () -> Void
     let openAI: (AIConfiguration) -> Void
@@ -140,13 +145,7 @@ private struct SettingsView: View {
             } footer: {
                 SettingsFooter("Caffeinate sessions keep the display from dimming, sleeping or locking. Turn this off to keep only the Mac awake and let the display sleep. Add display or system to a caffeinate command to choose for one session.")
             }
-            Section {
-                Toggle("Lower volume while dictating", isOn: boolean("dictationLowersVolume", state.config.dictationLowersVolume))
-            } header: {
-                Text("Dictation")
-            } footer: {
-                SettingsFooter("While the microphone is listening, the current output plays at a fifth of its volume. It returns to its previous level when you stop, unless you changed the volume yourself in the meantime. Muted outputs and outputs without software volume are left alone.")
-            }
+            DictationSettingsSection(config: state.config, access: dictationAccess, apply: apply, configURL: configURL)
             Section {
                 if !state.registrationErrors.isEmpty { Text(state.registrationErrors.joined(separator: "\n")).foregroundStyle(.red) }
                 GlobalShortcutRow(title: "Show Volant", key: "summonHotKey", value: state.config.summonHotKey, configURL: configURL, onChange: onChange)
@@ -158,7 +157,7 @@ private struct SettingsView: View {
             } header: {
                 Text("Keyboard Shortcuts")
             } footer: {
-                SettingsFooter("Click a shortcut and press a new combination; changes save immediately. Hold the dictation shortcut while you speak and let go to copy the text, or tap it to start and again to stop.")
+                SettingsFooter("Click a shortcut and press a new combination; changes save immediately. Hold the dictation shortcut while you speak and let go to finish, or tap it to start and again to stop.")
             }
         }
         .formStyle(.grouped)
@@ -238,7 +237,7 @@ private struct SettingsView: View {
             } header: {
                 Text("iCloud")
             } footer: {
-                SettingsFooter("Keyboard shortcuts, snippets, quicklinks, aliases, appearance and clipboard history length follow you to Macs signed in to the same Apple Account. App shortcuts, favorites, Dock, status bar, AI and extension settings stay on this Mac. When turned on, settings already in iCloud replace these, and a copy of this Mac's config.json is kept beside it.")
+                SettingsFooter("Keyboard shortcuts, snippets, quicklinks, aliases, appearance and clipboard history length follow you to Macs signed in to the same Apple Account. App shortcuts, favorites, Dock, status bar, dictation, AI and extension settings stay on this Mac. When turned on, settings already in iCloud replace these, and a copy of this Mac's config.json is kept beside it.")
             }
             Section {
                 LabeledContent("Raycast") {

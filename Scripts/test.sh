@@ -23,6 +23,8 @@ elif [[ "$ui_mode" != never ]]; then
 fi
 printf 'UI verification: %s (mode: %s)\n' "$run_ui" "$ui_mode"
 python3 tools/test-scope-tests.py
+python3 tools/check-input-confinement.py --self-test
+python3 tools/check-input-confinement.py
 python3 tools/interaction-speed/check.py
 python3 tools/ui-vm-dispatch-tests.py
 xcodegen generate --quiet

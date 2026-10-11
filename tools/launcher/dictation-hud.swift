@@ -135,6 +135,19 @@ let stepsWithKeyChecks: [(String, () -> Void)] = [
         model.finish("Dictation needs microphone access.", outcome: .failed)
     }),
     ("cancelled", { model.finish("Dictation cancelled.", outcome: .cancelled) }),
+    ("typing-listening", {
+        model.listen(stopHint: "Release or press ⌥Space to stop")
+        model.returnFinishes = true
+        model.heard("Fictional notes typed into the editor while speaking")
+    }),
+    ("typed", { model.finish(DictationTypingSession.Outcome.typed(42).message, outcome: .typed) }),
+    ("pasted", { model.finish(DictationTypingSession.Outcome.pasted(57).message, outcome: .typed) }),
+    ("refused-password", {
+        model.finish(DictationTypingSession.Outcome.copy(reason: .secureField, typedBefore: 0).message, outcome: .copied)
+    }),
+    ("refused-app-changed", {
+        model.finish(DictationTypingSession.Outcome.copy(reason: .appChanged, typedBefore: 18).message, outcome: .copied)
+    }),
 ]
 for (state, step) in stepsWithKeyChecks {
     step()

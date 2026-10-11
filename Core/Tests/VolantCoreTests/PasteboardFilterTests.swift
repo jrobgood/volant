@@ -12,4 +12,10 @@ final class PasteboardFilterTests: XCTestCase {
         XCTAssertFalse(PasteboardFilter.shouldRecord(types: ["com.apple.is-sensitive", "public.utf8-plain-text"]))
         XCTAssertFalse(PasteboardFilter.shouldRecord(types: ["org.nspasteboard.TransientType"]))
     }
+
+    /// The input helper's dictation pastes and clipboard restores carry their own marker too.
+    func testDictationSessionMarkerIsNeverRecorded() {
+        XCTAssertEqual(PasteboardFilter.dictationSessionType, "com.mysticcoders.volant.dictation-session")
+        XCTAssertFalse(PasteboardFilter.shouldRecord(types: ["public.utf8-plain-text", PasteboardFilter.dictationSessionType]))
+    }
 }

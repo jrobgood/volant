@@ -16,6 +16,11 @@ public struct Preferences: Codable {
     public var showInDock: Bool = true
     public var caffeinateKeepsDisplayAwake: Bool = true
     public var dictationLowersVolume: Bool = true
+    /// Where hotkey dictation's text goes on this Mac. Typing needs the input helper and its
+    /// Accessibility permission, so it is never the default and never synced.
+    public var dictationOutput: DictationOutput = .copy
+    /// With typing on, insert each finalized phrase while speaking rather than once at the end.
+    public var dictationTypesWhileSpeaking: Bool = true
     /// Per-Mac switch for mirroring the settings in SettingsSync.keys through iCloud.
     public var syncSettingsWithICloud: Bool = false
     public var statusBar = StatusBarConfiguration()
@@ -36,7 +41,7 @@ public struct Preferences: Codable {
     public var help: String = "Edit and choose Reload Configuration in Settings. Hotkeys: cmd|ctrl|option|shift|meh|hyper + key. App hotkeys use the bundle identifier. Snippets: {date} {isodate} {time} {datetime} {clipboard} {uuid}. Quicklinks: {query}. Aliases map a word to an app name or query. Appearance: theme system|light|dark, colorTheme system|volant|catppuccin-mocha|nord|…|custom-<name> (named themes set their own light or dark; customThemes holds imported Raycast themes), scale 0.8–1.4, opacity 0.5–1.0."
 
     public enum CodingKeys: String, CodingKey {
-        case favoriteApps, summonHotKey, notesHotKey, emojiHotKey, talkHotKey, lockScreenHotKey, sleepDisplaysHotKey, appHotKeys, clipboardRetention, showOnLaunch, showInDock, caffeinateKeepsDisplayAwake, dictationLowersVolume, syncSettingsWithICloud, statusBar, snippets, quicklinks, aliases, appearance
+        case favoriteApps, summonHotKey, notesHotKey, emojiHotKey, talkHotKey, lockScreenHotKey, sleepDisplaysHotKey, appHotKeys, clipboardRetention, showOnLaunch, showInDock, caffeinateKeepsDisplayAwake, dictationLowersVolume, dictationOutput, dictationTypesWhileSpeaking, syncSettingsWithICloud, statusBar, snippets, quicklinks, aliases, appearance
         case help = "_help"
     }
 
@@ -66,6 +71,9 @@ public struct Preferences: Codable {
         showInDock = try c.decodeIfPresent(Bool.self, forKey: .showInDock) ?? d.showInDock
         caffeinateKeepsDisplayAwake = try c.decodeIfPresent(Bool.self, forKey: .caffeinateKeepsDisplayAwake) ?? d.caffeinateKeepsDisplayAwake
         dictationLowersVolume = try c.decodeIfPresent(Bool.self, forKey: .dictationLowersVolume) ?? d.dictationLowersVolume
+        // An unknown output, for example from a newer version, falls back to copying rather than typing.
+        dictationOutput = (try? c.decodeIfPresent(DictationOutput.self, forKey: .dictationOutput)) ?? d.dictationOutput
+        dictationTypesWhileSpeaking = try c.decodeIfPresent(Bool.self, forKey: .dictationTypesWhileSpeaking) ?? d.dictationTypesWhileSpeaking
         syncSettingsWithICloud = try c.decodeIfPresent(Bool.self, forKey: .syncSettingsWithICloud) ?? d.syncSettingsWithICloud
         statusBar = try c.decodeIfPresent(StatusBarConfiguration.self, forKey: .statusBar) ?? StatusBarConfiguration()
         if !c.contains(.statusBar) {
@@ -85,7 +93,7 @@ public struct Preferences: Codable {
 
     /// Patch a single setting, preserving externally edited and unknown configuration fields.
     public static func updateBoolean(_ key: String, value: Bool, at url: URL = configURL) throws {
-        precondition(["showInDock", "showOnLaunch", "caffeinateKeepsDisplayAwake", "dictationLowersVolume", "syncSettingsWithICloud"].contains(key))
+        precondition(["showInDock", "showOnLaunch", "caffeinateKeepsDisplayAwake", "dictationLowersVolume", "dictationTypesWhileSpeaking", "syncSettingsWithICloud"].contains(key))
         let data = try Data(contentsOf: url)
         guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw CocoaError(.fileReadCorruptFile)
@@ -93,6 +101,18 @@ public struct Preferences: Codable {
         object[key] = value
         let updated = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         // Reject invalid known settings before changing the file.
+        _ = try JSONDecoder().decode(Preferences.self, from: updated)
+        try updated.write(to: url, options: .atomic)
+    }
+
+    /// Patch only the dictation output, preserving every other field.
+    public static func updateDictationOutput(_ output: DictationOutput, at url: URL = configURL) throws {
+        let data = try Data(contentsOf: url)
+        guard var object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        object["dictationOutput"] = output.rawValue
+        let updated = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         _ = try JSONDecoder().decode(Preferences.self, from: updated)
         try updated.write(to: url, options: .atomic)
     }
@@ -237,6 +257,15 @@ public struct Preferences: Codable {
         }
         return defaults
     }
+}
+
+/// Where dictation started from the hotkey puts its text.
+public enum DictationOutput: String, Codable, CaseIterable, Identifiable {
+    /// Copy the transcript and leave Command-V to the owner. Needs no extra permission.
+    case copy
+    /// Type finalized text into the app in front through the input helper.
+    case type
+    public var id: String { rawValue }
 }
 
 public struct Appearance: Codable, Equatable {

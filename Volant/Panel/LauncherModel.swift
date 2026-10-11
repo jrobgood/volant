@@ -397,6 +397,11 @@ final class LauncherModel: ObservableObject {
     enum DictationSurface { case launcher, indicator }
     private(set) var dictationSurface = DictationSurface.launcher
     let dictationIndicator = DictationIndicatorModel()
+    /// The input helper used when hotkey dictation types at the cursor. Nil leaves dictation
+    /// copying, which is how tests and fixtures run unless they inject a fake.
+    var inputHost: InputHostClient?
+    /// The current dictation's typing, when it types at the cursor rather than copying.
+    private(set) var dictationTyping: DictationTypingSession?
     /// Set once a dictation's final message is shown, so a failure reported by both the phase
     /// change and the completion callback appears once.
     private var dictationReported = false
@@ -910,16 +915,20 @@ final class LauncherModel: ObservableObject {
         file.url.lastPathComponent.range(of: term, options: [.caseInsensitive, .diacriticInsensitive]) != nil
     }
 
-    /// Dictation goes to the clipboard rather than into whatever app was focused. Typing into
-    /// another app needs the Accessibility grant Volant deliberately does not request, so the
-    /// transcript is copied and the paste stays the owner's keystroke. From the launcher, status
-    /// appears in its feedback line; from the global hotkey (`surface: .indicator`) it appears in
-    /// the floating indicator so the owner's app keeps focus.
+    /// By default dictation goes to the clipboard and the paste stays the owner's keystroke. When
+    /// the owner has chosen Type at the cursor, dictation from the global hotkey is typed into the
+    /// app in front by the input helper instead, the only part of Volant that uses Accessibility;
+    /// dictation from inside the launcher always copies, because Volant itself is in front. From
+    /// the launcher, status appears in its feedback line; from the global hotkey
+    /// (`surface: .indicator`) it appears in the floating indicator so the owner's app keeps focus.
     func toggleDictation(stopHint: String = "press Return to stop", surface: DictationSurface = .launcher) {
         if dictation.isListening { finishDictation(); return }
         dictationSurface = surface
         dictationReported = false
         dictationVolumeProblem = nil
+        dictationTyping?.cancel()
+        dictationTyping = nil
+        dictation.onFinalPhrase = nil
         let availability = SpeechDictation.availability
         guard availability.isReady else {
             if surface == .indicator {
@@ -929,6 +938,13 @@ final class LauncherModel: ObservableObject {
             }
             return
         }
+        if surface == .indicator, config.dictationOutput == .type, let inputHost {
+            let typing = DictationTypingSession(client: inputHost,
+                                                timing: config.dictationTypesWhileSpeaking ? .whileSpeaking : .whenFinished)
+            dictationTyping = typing
+            dictation.onFinalPhrase = { [weak typing] phrase in typing?.phraseFinalized(phrase) }
+            typing.start()
+        }
         if surface == .indicator {
             dictationIndicator.listen(stopHint: stopHint)
         } else {
@@ -936,6 +952,7 @@ final class LauncherModel: ObservableObject {
         }
         dictation.start { [weak self] _ in
             guard let self, case .failed(let reason) = self.dictation.phase else { return }
+            self.endDictationTyping()
             self.reportDictation(reason, outcome: .failed)
         }
     }
@@ -944,15 +961,26 @@ final class LauncherModel: ObservableObject {
     /// stopped without touching the clipboard. Once transcription has begun it runs to the end.
     func cancelDictation() {
         guard dictation.isListening else { return }
+        endDictationTyping()
         dictation.cancel()
         reportDictation("Dictation cancelled.", outcome: .cancelled)
     }
+
+    /// Whether the current dictation types at the cursor, which is when Return finishes it.
+    var dictationTypesAtCursor: Bool { dictationTyping != nil }
 
     func finishDictation() {
         guard dictation.isListening else { return }
         if dictationSurface == .indicator { dictationIndicator.transcribing() } else { actionFeedback = "Transcribing…" }
         dictation.stop { [weak self] transcript in
             guard let self else { return }
+            if let typing = self.dictationTyping, transcript != nil {
+                self.dictationTyping = nil
+                self.dictation.onFinalPhrase = nil
+                typing.finish(transcript: transcript) { [weak self] outcome in self?.reportTyping(outcome, transcript: transcript) }
+                return
+            }
+            self.endDictationTyping()
             guard let transcript else {
                 if case .failed(let reason) = self.dictation.phase { self.reportDictation(reason, outcome: .failed) }
                 else { self.reportDictation("Nothing was heard.", outcome: .nothing) }
@@ -964,6 +992,27 @@ final class LauncherModel: ObservableObject {
                 : "Copied \(transcript.count) characters. Press Command-V to paste."
             self.reportDictation(message, outcome: .copied)
         }
+    }
+
+    /// Reports how typing ended. When the helper refused or was unavailable, the transcript is
+    /// copied as it would have been without typing, and the reason is shown.
+    private func reportTyping(_ outcome: DictationTypingSession.Outcome, transcript: String?) {
+        switch outcome {
+        case .nothing:
+            reportDictation(outcome.message, outcome: .nothing)
+        case .typed, .pasted:
+            reportDictation(outcome.message, outcome: .typed)
+        case .copy:
+            if let transcript { copy(transcript) }
+            reportDictation(outcome.message, outcome: .copied)
+        }
+    }
+
+    /// Stops typing for this dictation without a result, after Escape or a failure.
+    private func endDictationTyping() {
+        dictationTyping?.cancel()
+        dictationTyping = nil
+        dictation.onFinalPhrase = nil
     }
 
     /// Lowers the output once the microphone is live and restores it as soon as listening ends,
@@ -978,6 +1027,7 @@ final class LauncherModel: ObservableObject {
             : dictationVolume.restore()
         if let problem { noteDictationVolumeProblem(problem) }
         if case .failed(let reason) = phase, dictationSurface == .indicator, dictationIndicator.isListening {
+            endDictationTyping()
             reportDictation(reason, outcome: .failed)
         }
     }

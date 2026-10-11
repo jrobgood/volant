@@ -42,6 +42,10 @@ final class SpeechDictation: ObservableObject {
 
     var isListening: Bool { phase == .listening }
 
+    /// Called on the main actor with each finalized phrase, in order, for typing while speaking.
+    /// Volatile text that may still change is never passed here.
+    var onFinalPhrase: ((String) -> Void)?
+
     nonisolated static var availability: Availability {
         #if canImport(Speech) && canImport(FoundationModels)
         guard #available(macOS 26.0, *) else { return .unavailable(requiresNewerSystem) }
@@ -160,6 +164,7 @@ final class SpeechDictation: ObservableObject {
                             if result.isFinal {
                                 settled += text
                                 self.transcript = settled
+                                self.onFinalPhrase?(text)
                             } else {
                                 self.transcript = settled + text
                             }

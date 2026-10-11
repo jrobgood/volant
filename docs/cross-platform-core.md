@@ -22,7 +22,7 @@ It does not. The extension ABI is serialize-into-linear-memory, `run(ptr,len)`, 
 
 Portable core plus native UI per platform is Vicinae's architecture: a `src/server/` daemon with QML front-ends. Adopting it means competing with Vicinae as a worse Vicinae, two years behind and one developer against 296 forks, on their home turf.
 
-It also costs the differentiator. App Sandbox, no network entitlement, no Accessibility grant, Carbon hotkeys and AppKit/SwiftUI are macOS-specific, and a portable core forces precisely the compromises that produce Vicinae's security posture — the thing `docs/competitors.md` records as structurally uncopyable from Volant.
+It also costs the differentiator. App Sandbox, no network entitlement, no Accessibility grant by default, Carbon hotkeys and AppKit/SwiftUI are macOS-specific, and a portable core forces precisely the compromises that produce Vicinae's security posture — the thing `docs/competitors.md` records as structurally uncopyable from Volant.
 
 ## Recommendation
 

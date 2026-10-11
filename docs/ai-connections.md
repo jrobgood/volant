@@ -100,10 +100,12 @@ through LaunchServices so nothing was inherited from a terminal.
 - **Hold-to-talk: free.** Carbon delivers `kEventHotKeyReleased` for a registered combination.
   Measured sandboxed with a real keypress: two presses, two releases, three-second and two-second
   holds. No Input Monitoring and no Accessibility.
-- **Auto-insert into the focused app: not done.** Both routes, synthesising Command-V and writing
-  through `AXUIElement`, need the Accessibility grant Volant refuses and `docs/competitors.md`
-  cites as a differentiator. The transcript is copied instead and the paste stays the owner's
-  keystroke.
+- **Auto-insert into the focused app: opt-in, outside the main app.** Both routes, synthesising
+  Command-V and writing through `AXUIElement`, need Accessibility, which the sandboxed main app never
+  uses. By default the transcript is copied and the paste stays the owner's keystroke. Since Phase 1
+  of [dictation typed at the cursor](dictation-at-cursor-design.md), choosing Type at the cursor
+  hands finalized hotkey dictation to the separate `VolantInputHost` helper, which alone holds the
+  grant.
 
 ### Behavior
 

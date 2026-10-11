@@ -1,0 +1,9 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>pwlen=0</title>
+<input id="p" type="password" autofocus>
+<script>
+  const p = document.getElementById('p');
+  p.addEventListener('input', () => { document.title = 'pwlen=' + p.value.length; });
+  window.addEventListener('load', () => p.focus());
+</script>

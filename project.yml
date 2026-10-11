@@ -86,6 +86,8 @@ targets:
         embed: true
       - target: VolantRatesHost
         embed: true
+      - target: VolantInputHost
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mysticcoders.volant
@@ -191,6 +193,30 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.mysticcoders.volant.AgentHost
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_APP_SANDBOX: NO
+  # Types dictation at the cursor. The only target that may use Accessibility or post events
+  # (tools/check-input-confinement.py). Unsandboxed like VolantAgentHost, with no entitlements;
+  # launched only when the owner chooses Type at the cursor. See docs/dictation-at-cursor-design.md.
+  VolantInputHost:
+    type: xpc-service
+    platform: macOS
+    sources:
+      - path: VolantInputHost
+    dependencies:
+      - package: VolantCore
+    info:
+      path: VolantInputHost/Info.plist
+      properties:
+        CFBundleIdentifier: com.mysticcoders.volant.InputHost
+        CFBundleName: VolantInputHost
+        XPCService:
+          ServiceType: Application
+          JoinExistingSession: true
+          RunLoopType: NSRunLoop
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.mysticcoders.volant.InputHost
         GENERATE_INFOPLIST_FILE: NO
         ENABLE_APP_SANDBOX: NO
   VolantTests:

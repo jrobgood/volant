@@ -11,8 +11,23 @@ try FileManager.default.createDirectory(at: root, withIntermediateDirectories: t
 let configURL = root.appendingPathComponent("config.json")
 try Data(#"{"aliases":{"safari":"/Applications/Safari.app"},"appHotKeys":[],"syncSettingsWithICloud":true}"#.utf8).write(to: configURL)
 let apps = [AppEntry(id: "/System/Applications/Calculator.app", name: "Calculator", url: URL(fileURLWithPath: "/System/Applications/Calculator.app"), lastUsed: nil), AppEntry(id: "/Applications/Safari.app", name: "Safari", url: URL(fileURLWithPath: "/Applications/Safari.app"), lastUsed: nil)]
+/// Stands in for the input helper so the preview never launches it or prompts for Accessibility.
+/// It reports Accessibility as not allowed until `trusted` is set.
+final class PreviewInputHost: InputHostClient {
+    var trusted = false
+    func status(prompt: Bool, completion: @escaping (InputHostStatus?) -> Void) {
+        let trusted = self.trusted
+        DispatchQueue.main.async { completion(InputHostStatus(trusted: trusted, secureInput: false)) }
+    }
+    func beginSession(completion: @escaping (InputSessionStart?) -> Void) { completion(InputSessionStart(refusal: .notTrusted)) }
+    func insert(phrase: String, token: Data, completion: @escaping (InputInsertion?) -> Void) { completion(.refused(.notTrusted)) }
+    func endSession(token: Data) {}
+    func disconnect() {}
+}
+let previewInputHost = PreviewInputHost()
+let dictationAccess = DictationTypingAccess(client: previewInputHost)
 var controller: SettingsWindowController!
-controller = SettingsWindowController(configURL: configURL) {
+controller = SettingsWindowController(configURL: configURL, dictationAccess: dictationAccess) {
     HotKeyCenter.shared.unregisterAll()
     AppHotKeys.register((try? JSONDecoder().decode(Preferences.self, from: Data(contentsOf: configURL)))?.appHotKeys ?? [])
     controller.refresh(try! JSONDecoder().decode(Preferences.self, from: Data(contentsOf: configURL)), apps: apps)
@@ -289,6 +304,34 @@ if CommandLine.arguments.contains("--render") {
                 }
             }
         }
+        // Dictation output states, with the fake input host: typing chosen but not allowed, allowed,
+        // and copying again after typing was turned off. No helper runs and nothing prompts.
+        func scrollGeneral(toFraction fraction: CGFloat) {
+            func scrollViews(_ view: NSView) -> [NSScrollView] {
+                (view as? NSScrollView).map { [$0] } ?? view.subviews.flatMap(scrollViews)
+            }
+            for scroll in scrollViews(controller.window!.contentView!) {
+                guard let document = scroll.documentView else { continue }
+                let range = max(0, document.bounds.height - scroll.contentView.bounds.height)
+                document.scroll(NSPoint(x: 0, y: document.isFlipped ? range * fraction : range * (1 - fraction)))
+            }
+        }
+        for theme in ["light", "dark"] {
+            app.appearance = NSAppearance(named: theme == "dark" ? .darkAqua : .aqua)
+            controller.state.section = "General"
+            for (name, output, trusted) in [("typing-not-allowed", DictationOutput.type, false), ("typing-allowed", .type, true), ("copy-after-typing", .copy, true)] {
+                previewInputHost.trusted = trusted
+                try! Preferences.updateDictationOutput(output, at: configURL)
+                controller.refresh(try! JSONDecoder().decode(Preferences.self, from: Data(contentsOf: configURL)), apps: apps)
+                dictationAccess.chose(output)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                scrollGeneral(toFraction: 0.45)
+                RunLoop.main.run(until: Date().addingTimeInterval(0.15))
+                capture(theme + "-General-dictation-" + name)
+                print("Rendered \(theme) General dictation \(name)")
+            }
+        }
+        controller.refresh(try! JSONDecoder().decode(Preferences.self, from: Data(contentsOf: configURL)), apps: apps)
         for (colorTheme, mode) in [("volant", Appearance.Theme.light), ("catppuccin-mocha", .dark), ("rose-pine-dawn", .light)] {
             ThemeStore.shared.apply(Appearance(theme: mode, colorTheme: colorTheme))
             controller.state.section = "Appearance"

@@ -1,7 +1,9 @@
 # Dictation typed at the cursor — design
 
-Design only, October 11, 2026. Nothing here is implemented except the non-key hotkey indicator
-and the temporary Escape key, described under "Hotkey indicator (implemented)". It extends the shipped dictation
+October 11, 2026. **Phase 1 is implemented** (see "Phase 1 (implemented)"), on top of the non-key
+hotkey indicator and the temporary Escape key described under "Hotkey indicator (implemented)".
+Phases 2 and 3 remain design. Where the Phase 1 section differs from older sections below (setting
+name, insertion order, frontmost-app detection), the Phase 1 section is current. It extends the shipped dictation
 (`Volant/Dictation/SpeechDictation.swift`, `docs/ai-connections.md`), which copies the transcript
 and leaves Command-V to the owner. The owner has decided to add an Accessibility helper and asked
 whether it can run only for people who turn the feature on.
@@ -219,6 +221,158 @@ launcher keeps its in-launcher status line.
   fixture never registers a hotkey or starts the microphone. Real hotkey and Escape delivery,
   full-screen Spaces placement and live recognition in the signed installed app are separate
   evidence.
+
+## Phase 1 (implemented)
+
+Implemented October 11, 2026, following the owner decisions and Phase 0 outcomes below.
+
+**Setting.** Settings → General → Dictation → **Dictation output**: **Copy to clipboard** (default,
+today's behavior) or **Type at the cursor**, with **Type: While speaking** (default) or **When
+finished** under it. Keys `dictationOutput` (`copy` or `type`; an unknown value reads as `copy`) and
+`dictationTypesWhileSpeaking`, both per Mac, outside `SettingsSync.keys`, and written by narrow
+patches (`Preferences.updateDictationOutput`, `Preferences.updateBoolean`) that keep unknown fields.
+This replaces the `dictationTypesAtCursor` toggle sketched under "On-demand lifecycle". Typing applies
+to dictation from the global hotkey only; `talk` inside the launcher still copies, because Volant is
+in front there.
+
+**Lifecycle.** Volant connects to the helper only when the owner picks Type at the cursor, and that
+first call is the prompting `accessibilityStatus(prompt: true)`. While typing stays chosen, opening
+Settings or returning to Volant checks again without prompting, from a fresh helper process when no
+dictation is using it. Choosing Copy to clipboard disconnects and the helper exits about a second
+after its last connection ends; Settings then says the grant stays until the owner turns Volant off in
+Privacy & Security → Accessibility, with **Open Accessibility Settings**. With Copy to clipboard,
+nothing calls the helper, so on macOS 15 no Accessibility entry appears.
+
+**Target.** `VolantInputHost` (`com.mysticcoders.volant.InputHost`), an embedded XPC service in
+`Contents/XPCServices`: no entitlements (unsandboxed), hardened runtime, team-signed like the other
+helpers, `ServiceType` Application, `JoinExistingSession`, `RunLoopType` NSRunLoop. It accepts a
+connection only through `setCodeSigningRequirement` with
+`anchor apple generic and identifier "com.mysticcoders.volant" and certificate leaf[subject.OU] = "REMBT6JY4N"`
+(`InputHostService.callerRequirement`). The main app gains no entitlement and no Accessibility code.
+
+**API** (`VolantInputHostProtocol` in VolantCore; JSON replies):
+
+| Method | Reply |
+| --- | --- |
+| `accessibilityStatus(prompt:reply:)` | `InputHostStatus`: trusted, secure input on |
+| `beginSession(reply:)` | `InputSessionStart`: a 32-byte token bound to the app in front, or `notTrusted` / `noTarget` (Volant itself or nothing in front) |
+| `insert(phrase:token:reply:)` | `InputInsertion`: `typed(n)`, `pasted(n)`, `refused(reason)` or `failed` |
+| `endSession(token:)` | none; unknown tokens are ignored |
+
+One session at a time; a new one replaces the old. Tokens expire after 5 idle minutes or 60 minutes in
+all. Phrases are capped at 20,000 UTF-16 units (`tooLong`) and lose C0 controls other than newline and
+tab. No method takes key codes, attribute names, pids or bundle identifiers, and none returns text.
+`InputSessionControllerTests.testProtocolShape` pins the four selectors.
+
+**Each phrase** (`InputSessionController`, pure and tested with fakes), in order: refuse a stale
+token; refuse without trust (`notTrusted`), with secure input on anywhere (`secureInput`), when the
+app in front is not the session's pid and launch date (`appChanged`), when the focused element belongs
+to another process (`appChanged`), or when its role or subrole is `AXSecureTextField`
+(`secureField`). Then, unless the session already pastes: read `kAXNumberOfCharactersAttribute`, set
+`kAXSelectedTextAttribute`, read the count again; if it did not change, wait 100 ms and read once more;
+if it still did not change, paste this phrase and paste for the rest of the session. With no focused
+element (Chrome, Electron), no character count, or a non-empty selection (where a replacement can
+leave the count unchanged), the phrase is pasted without trying Accessibility. The paste saves the
+general pasteboard (up to 32 MB, eagerly), writes the phrase with `org.nspasteboard.TransientType`,
+`ConcealedType` and `com.mysticcoders.volant.dictation-session`, waits 100 ms, posts Command-V with
+physical key codes from a private event source, and after 250 ms restores the saved items, marked
+transient and with the session type, only if `changeCount` is still its own. `PasteboardFilter`
+refuses the session type as well, so neither the phrase nor the restore enters clipboard history.
+Only roles, subroles, pids, character counts and selection lengths are read; no text is read, logged
+or returned.
+
+**Frontmost app.** The VM run showed that from this service every system-wide Accessibility query
+(`kAXFocusedApplicationAttribute`, `kAXFocusedUIElementAttribute`) fails with
+`kAXErrorCannotComplete`, and that `NSWorkspace.frontmostApplication` keeps the app that was in front
+when the service started. The helper therefore takes candidates from NSWorkspace, the on-screen window
+order and the running regular apps, and accepts the first whose own application element reports
+`AXFrontmost`; the focused element is read from that app's element.
+
+**App side.** `DictationTypingSession` (VolantCore) sends finalized phrases one at a time, in order,
+while speaking (`SpeechDictation.onFinalPhrase`; volatile text is never sent), or the trimmed
+transcript once when finished. The first refusal stops typing for the rest of the dictation; at the
+end the transcript is copied and the reason shown. Escape cancels without a result; text already
+typed stays. `InputHostConnection` is the lazy XPC client with a 10-second reply timeout.
+
+**Keys.** While the indicator listens for a dictation that types, unmodified Return is registered
+through Carbon next to Escape and finishes; both are unregistered the moment listening ends.
+Dictation that copies leaves Return alone.
+
+**Indicator results.** "Typed N characters.", "Pasted N characters." (the paste fallback was used),
+"Copied — typing isn’t allowed in password fields.", "Copied — secure input is on, so Volant won’t
+type.", "Copied — the app in front changed.", "Copied — Volant needs Accessibility permission to
+type.", "Copied — the input helper didn’t respond.", and "Stopped after N characters and copied the
+transcript — …" when typing stopped partway. The listening hint names only registered keys: "Return
+finishes, Escape cancels."
+
+**Confinement.** `tools/check-input-confinement.py` (run with its self-test from `Scripts/test.sh`)
+fails if `AXUIElement…`, `AXIsProcessTrusted…`, `kAXTrustedCheckOption…`, `CGEventPost…`,
+`CGEventCreateKeyboardEvent`, `CGEventTapCreate…`, `CGEvent.tapCreate`, `CGEvent(keyboardEventSource:`,
+`.post(tap:`, `.postToPid(` or Unicode keystroke calls appear in a Swift, C or Objective-C source
+outside `VolantInputHost/`. Only `tools/input-spike/` is exempt.
+
+### Phase 1 evidence
+
+Fakes only (unit tests, no helper, no prompt, no hotkey): `InputSessionControllerTests` (AX success;
+no change → one recheck → paste and stick; a late count change within the recheck is not pasted
+twice; no element or no count pastes; a selection pastes without sticking; refusals for secure input,
+secure role and subrole, app change, relaunch with the same pid, another process's element, lost trust
+and length; stale, replaced, ended, idle and expired tokens; the protocol's selectors; JSON round
+trips), `DictationTypingSessionTests` (order and one-at-a-time, paste reporting, when finished,
+refusals with partial typing, begin refusal and unavailable helper, nil replies, cancel and late
+replies, completion after the caller lets go, wording for every refusal), `PreferencesTests`
+(default copy, narrow patch, not synced, unknown value), `PasteboardFilterTests`, and in the app test
+host `DictationTypingTests` (Copy never calls the helper; choosing typing prompts once, later visits
+do not; a busy dictation keeps its connection; switching back stops the helper and ignores late
+replies; Return registered only while listening and typing; hint wording).
+
+**End to end in a VM** (`tools/input-host-e2e/run-vm.py --with-chrome`, October 11, 2026): a
+disposable clone of `volant-ui-xcode` (macOS 15.7.7), deleted afterwards. The harness is a sandboxed,
+Developer ID signed `Volant.app` (`com.mysticcoders.volant`) around the real `VolantInputHost.xpc`
+from an xcodebuild Release build, re-signed with the same Developer ID; it uses the production
+`InputHostConnection`, `DictationTypingSession`, `DictationEscapeKey` and `HotKeyCenter`, and stands
+in for speech recognition (phrases come from its arguments) and for the hotkey. Results were read
+back independently by UI scripting over SSH, never through the helper. Exercised:
+
+- Before any grant the helper was not running. A prompt-free status added a denied "Volant" row (as
+  Phase 0 found on macOS 15); the prompting status showed the system alert "“Volant” would like to
+  control this computer using accessibility features." with no purpose string; typing then refused with
+  `notTrusted` and left the clipboard alone. The grant was given through System Settings' own switch.
+- TextEdit, while speaking: three phrases ("Hello there.", " This is live dictation.", " Café 👍
+  done.") went in through Accessibility, with the emoji and accent intact, TextEdit stayed in front,
+  the clipboard was never touched, and one Command-Z removed the whole dictation. When finished: one
+  insertion.
+- Return: registered with Escape, consumed by Volant to finish (TextEdit got no newline), then reached
+  TextEdit again after unregistering.
+- A token the helper never issued: `staleSession`.
+- App change: switching from TextEdit to Finder between phrases typed only the first phrase, refused
+  the second with `appChanged`, and the transcript was copied. The same in Terminal (paste path).
+- One helper process across two dictations: the second targeted Terminal, launched after the helper
+  started, and pasted there. (In the final run TextEdit had just crashed, so the first dictation went
+  to the crash reporter dialog that was in front, which is the specified behavior: type into whatever
+  was in front when dictation started.)
+- Chrome 154 textarea: no focused element exposed, so each phrase was pasted; the page received all
+  three phrases (37 UTF-16 units) and the sentinel clipboard text came back, marked transient with the
+  session type. With a PNG on the clipboard, the image types came back after the paste.
+- Chrome password field (secure input on): `secureInput`, nothing typed (`pwlen=0`). Safari password
+  field (secure input off, `AXSecureTextField`): `secureField`, nothing typed.
+- After every run the helper process had exited.
+
+Not exercised: the real Volant.app with live SpeechAnalyzer and the physical hotkey (the harness
+stands in for both), macOS 26 or 27, a notarized build or Sparkle update, Electron apps, iTerm2,
+Ghostty, Notes, Office, `contenteditable` editors, Terminal's Secure Keyboard Entry, an Electron
+password field, native `NSSecureTextField` in another app, file and promised clipboard contents, the
+idle and lifetime token expiry against the real helper, revoking the grant while typing, a physical
+keyboard, and apps that apply an Accessibility insertion later than the 100 ms recheck (which would
+then also be pasted). TextEdit's own autosave crashed several times in the guest
+(`-[NSDocument writeToURL:ofType:error:]`), including in runs where nothing was typed; the readbacks
+avoid reopening documents.
+
+**Light and dark inspection still needed:** Settings → General with Type at the cursor (not allowed,
+allowed) and after switching back to Copy (`tools/preview-settings.sh --render` writes
+`/tmp/volant-settings-renders/<theme>-General-dictation-*.png` from a fake input host), and the
+indicator's `typing-listening`, `typed`, `pasted`, `refused-password` and `refused-app-changed` states
+(`tools/check-dictation-hud.sh`, in the Tart UI run).
 
 ## Trigger keys
 
@@ -508,7 +662,8 @@ New open questions from Phase 0:
 0. **Spike** (no product code): the VM measurements listed in Testing plan step 1. Outcome:
    choose A or C, the exact Settings copy for the list name, and whether Input Monitoring or the
    Carbon Escape key is needed.
-1. **Insert at the cursor with the existing hotkey.**
+1. **Insert at the cursor with the existing hotkey.** Implemented; see "Phase 1 (implemented)",
+   which supersedes the details below (AX first with paste fallback, Return added).
    - New `VolantInputHost` target: embedded XPC service, hardened runtime, no sandbox,
      `JoinExistingSession` and `RunLoopType = NSRunLoop` in its `XPCService` dictionary.
    - `status`, `requestAccessibility`, `beginSession`, `insert` and `endSession`.

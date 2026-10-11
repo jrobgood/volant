@@ -5,7 +5,14 @@ import VolantCore
 
 /// Owns the long-lived services: menu bar item, hotkeys, app index, clipboard monitor, and the panel.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(acp: panel.model.acp, openAI: { [weak self] configuration in
+    /// The one connection to the input helper, shared by dictation and Settings. It connects only
+    /// when the owner has chosen Type at the cursor.
+    private let inputHost = InputHostConnection()
+    private lazy var dictationAccess = DictationTypingAccess(client: inputHost, canReconnect: { [weak self] in
+        guard let model = self?.panel.model else { return true }
+        return !model.dictation.isListening && !model.dictationTypesAtCursor
+    })
+    private lazy var settingsPanel: SettingsWindowController = SettingsWindowController(acp: panel.model.acp, dictationAccess: dictationAccess, openAI: { [weak self] configuration in
         guard let self else { return }
         self.settingsPanel.window?.orderOut(nil)
         self.panel.model.acp.configure(configuration)
@@ -136,6 +143,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         applyTheme()
         if let ai = try? AIConfiguration.load() { panel.model.acp.configure(ai) }
         if config.syncSettingsWithICloud { settingsSync.update(enabled: true) }
+        panel.model.inputHost = inputHost
         currencyRates.loadCache()
         currencyRates.onUpdate = { [weak self] in self?.panel.model.refreshForCurrencyRates() }
         panel.model.onCalculationQuery = { [weak self] query in self?.currencyRates.noteQuery(query) }
@@ -332,12 +340,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Holds unmodified Escape as a Carbon hotkey only while the indicator is listening, so Escape
-    /// cancels without Volant taking focus, and tells the indicator whether to mention it.
+    /// cancels without Volant taking focus, plus unmodified Return to finish when the dictation
+    /// types at the cursor, and tells the indicator which of them to mention.
     private func updateDictationEscape(listening: Bool) {
         let model = panel.model
-        model.dictationIndicator.escapeCancels = dictationEscape.update(listening: listening) { [weak model] in
-            model?.cancelDictation()
-        }
+        model.dictationIndicator.escapeCancels = dictationEscape.update(
+            listening: listening, finishesOnReturn: model.dictationTypesAtCursor,
+            onEscape: { [weak model] in model?.cancelDictation() },
+            onReturn: { [weak model] in model?.finishDictation() })
+        model.dictationIndicator.returnFinishes = dictationEscape.isReturnRegistered
     }
 
     private func endDictationFromHotkey() {
@@ -382,6 +393,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         config = loaded
+        if config.dictationOutput == .copy, !panel.model.dictationTypesAtCursor { inputHost.disconnect() }
         NSApp.setActivationPolicy(config.showInDock ? .regular : .accessory)
         applyTheme()
         settingsPanel.refresh(config, apps: index.apps)

@@ -86,6 +86,8 @@ export default function SystemControl() {
         started with the Dictate Text shortcut, in its small floating
         indicator. Turn this off with{' '}
         <strong>Lower volume while dictating</strong> in Settings → General.
+        None of this needs Accessibility; only the separate, opt-in Type at the
+        cursor dictation output does.
       </p>
       <div className="docs-note">
         <p>
